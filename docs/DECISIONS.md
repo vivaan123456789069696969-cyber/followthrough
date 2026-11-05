@@ -54,6 +54,10 @@
 - Basic security headers ship from Phase 0. CSP and rate limit timing: see BUILD-PLAN.
 - Before Phase 1: enable_confirmations stays on so an unconfirmed address can't sign in; check every public table has RLS in the test suite.
 
+### CI not active yet (2026-11-05)
+- The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
+- Phase 0's CI requirement stays open. Checks ran locally before pushing.
+
 ### Tooling notes (2026-11-05)
 - TypeScript stays on 5.x: typescript-eslint supports below 6.1. ESLint stays on 9.x: eslint-plugin-react, import and jsx-a11y do not support 10. Revisit when they do.
 - Commit author is set in this repo only: the GitHub login with its noreply address.

@@ -122,6 +122,14 @@ Add your API key to `ANTHROPIC_API_KEY`. The model is set by `ANTHROPIC_MODEL`, 
 
 Create a Next.js project in Sentry and set the `SENTRY_*` variables. Meeting notes, task text and other personal data stay out of error reports.
 
+## Turn on CI
+
+The CI workflow isn't active yet. To turn it on, grant `gh` the `workflow` scope, then move `docs/ci-workflow.yml` to `.github/workflows/ci.yml` and push.
+
+```bash
+gh auth refresh -h github.com -s workflow
+```
+
 ## License
 
 [MIT](LICENSE)
