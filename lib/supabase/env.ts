@@ -12,6 +12,8 @@ export function getSupabaseEnv(): { url: string; publishableKey: string } | null
 export function getAppUrl(): string {
   const url = process.env.NEXT_PUBLIC_APP_URL;
   if (url) return url.replace(/\/+$/, "");
+  // Set by Vercel itself on every deployment, so it can't be forged by a request.
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   if (process.env.NODE_ENV === "production") {
     throw new Error("NEXT_PUBLIC_APP_URL is not set");
   }
