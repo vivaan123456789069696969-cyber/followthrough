@@ -3,12 +3,21 @@
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 import type { EmailSignInState } from "@/app/sign-in/actions";
-import { primaryButton } from "./button-styles";
+import { primaryButton, secondaryButton } from "./button-styles";
 
 type Props = {
   action: (previous: EmailSignInState, formData: FormData) => Promise<EmailSignInState>;
   next: string;
 };
+
+export function GoogleButton() {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className={`${secondaryButton} w-full`}>
+      {pending ? "Opening Google" : "Continue with Google"}
+    </button>
+  );
+}
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -46,6 +55,7 @@ export function MagicLinkForm({ action, next }: Props) {
         name="email"
         type="email"
         required
+        defaultValue={hasError ? state.email : undefined}
         autoComplete="email"
         aria-invalid={hasError}
         aria-describedby={hasError ? "email-error" : undefined}

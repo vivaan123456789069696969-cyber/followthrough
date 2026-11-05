@@ -1,79 +1,231 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
 
-test("protected pages send signed-out visitors to sign-in", async ({ page }) => {
-  await page.goto("/my-day?from=test");
+const WCAG = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
-  await expect(page).toHaveURL(/\/sign-in\?next=%2Fmy-day%3Ffrom%3Dtest$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
-});
-
-test("a page nobody has built yet is still private", async ({ page }) => {
-  await page.goto("/settings");
-
-  await expect(page).toHaveURL(/\/sign-in\?next=%2Fsettings$/);
-});
-
-test("forged session cookies don't open protected pages", async ({ page, context, baseURL }) => {
+/** A session cookie in Supabase's real format. tests/e2e/fake-supabase.mjs accepts only "good-*" signatures. */
+async function setSession(context: BrowserContext, baseURL: string | undefined, signature: string) {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const farFuture = Math.floor(Date.now() / 1000) + 3600;
-  const forgedToken = [
+  const expires = Math.floor(Date.now() / 1000) + 3600;
+  const userId = "00000000-0000-4000-8000-000000000001";
+  const accessToken = [
     encode({ alg: "HS256", typ: "JWT" }),
-    encode({ sub: "00000000-0000-4000-8000-000000000001", role: "authenticated", exp: farFuture }),
-    "forged-signature",
+    encode({ sub: userId, role: "authenticated", email: "maya@example.com", exp: expires }),
+    signature,
   ].join(".");
   const session = {
-    access_token: forgedToken,
-    refresh_token: "forged",
+    access_token: accessToken,
+    refresh_token: "refresh",
     token_type: "bearer",
     expires_in: 3600,
-    expires_at: farFuture,
-    user: { id: "00000000-0000-4000-8000-000000000001", aud: "authenticated", role: "authenticated" },
+    expires_at: expires,
+    user: { id: userId, aud: "authenticated", role: "authenticated" },
   };
-  // Named as Supabase names it for this project URL, so the auth code really reads it.
   await context.addCookies([{ name: "sb-127-auth-token", value: `base64-${encode(session)}`, url: baseURL! }]);
+}
 
-  await page.goto("/my-day");
+test.describe("signed out", () => {
+  test("protected pages send visitors to sign-in", async ({ page }) => {
+    await page.goto("/my-day?from=test");
 
-  await expect(page).toHaveURL(/\/sign-in/);
-});
+    await expect(page).toHaveURL(/\/sign-in\?next=%2Fmy-day%3Ffrom%3Dtest$/);
+    await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
+  });
 
-test("the sign-in form explains when a link can't be sent", async ({ page }) => {
-  await page.goto("/sign-in");
+  test("a page nobody has built yet is still private", async ({ page }) => {
+    await page.goto("/settings");
 
-  await page.getByLabel("Email").fill("maya@example.com");
-  await page.getByRole("button", { name: "Send sign-in link" }).click();
+    await expect(page).toHaveURL(/\/sign-in\?next=%2Fsettings$/);
+  });
 
-  await expect(page.getByRole("main").getByRole("alert")).toHaveText("We couldn't send the link. Try again.", {
-    timeout: 30_000,
+  test("a path that looks like an image is still private", async ({ page }) => {
+    await page.goto("/api/meetings/x.png");
+
+    await expect(page).toHaveURL(/\/sign-in\?next=/);
+  });
+
+  test("a session with a bad signature is rejected", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "forged-signature");
+
+    await page.goto("/my-day");
+
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
+
+  test("a garbled session cookie is treated as signed out", async ({ page, context, baseURL }) => {
+    await context.addCookies([{ name: "sb-127-auth-token", value: "base64-bm90LWpzb24", url: baseURL! }]);
+
+    await page.goto("/my-day");
+
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
+
+  test("the home page leads to sign-in", async ({ page }) => {
+    await page.goto("/");
+
+    await page.getByRole("link", { name: "Sign in" }).click();
+
+    await expect(page).toHaveURL(/\/sign-in$/);
   });
 });
 
-test("sign-in offers Google and email", async ({ page }) => {
-  await page.goto("/sign-in");
+test.describe("sign-in page", () => {
+  test("offers Google and email", async ({ page }) => {
+    await page.goto("/sign-in");
 
-  await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
-  await expect(page.getByLabel("Email")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+    await expect(page.getByLabel("Email")).toBeVisible();
+  });
+
+  test("confirms when the link is sent", async ({ page }) => {
+    await page.goto("/sign-in");
+
+    await page.getByLabel("Email").fill("maya@example.com");
+    await page.getByRole("button", { name: "Send sign-in link" }).click();
+
+    await expect(page.getByRole("main").getByRole("status")).toContainText("We sent a sign-in link to maya@example.com");
+    const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("explains when a link can't be sent and keeps the address", async ({ page }) => {
+    await page.goto("/sign-in");
+
+    await page.getByLabel("Email").fill("fail@example.com");
+    await page.getByRole("button", { name: "Send sign-in link" }).click();
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText("We couldn't send the link. Try again.", { timeout: 30_000 });
+    await expect(page.getByLabel("Email")).toHaveValue("fail@example.com");
+  });
+
+  test("explains rate limits", async ({ page }) => {
+    await page.goto("/sign-in");
+
+    await page.getByLabel("Email").fill("busy@example.com");
+    await page.getByRole("button", { name: "Send sign-in link" }).click();
+
+    await expect(page.getByRole("main").getByRole("alert")).toHaveText("Too many requests. Try again later.");
+  });
+
+  for (const [path, message] of [
+    ["/sign-in?error=link", "That link didn't work or has expired. Send a new one."],
+    ["/auth/callback", "That link didn't work or has expired. Send a new one."],
+    ["/auth/callback?error=access_denied&error_code=cancelled", "We couldn't sign you in. Try again."],
+  ] as const) {
+    test(`shows the right message for ${path}`, async ({ page }) => {
+      await page.goto(path);
+
+      await expect(page).toHaveURL(/localhost.*\/sign-in\?error=\w+$/);
+      await expect(page.getByRole("main").getByRole("alert")).toHaveText(message);
+    });
+  }
+
+  test("ignores unknown error codes, including ones that look like object properties", async ({ page }) => {
+    const response = await page.goto("/sign-in?error=constructor");
+
+    expect(response?.status()).toBe(200);
+    await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
+  });
+
+  test("has no accessibility violations", async ({ page }) => {
+    await page.goto("/sign-in?error=link");
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("the callback response is never cached", async ({ request }) => {
+    const response = await request.get("/auth/callback", { maxRedirects: 0 });
+
+    expect(response.status()).toBe(307);
+    expect(response.headers()["cache-control"]).toContain("no-store");
+  });
 });
 
-test("the callback rejects a missing code", async ({ page }) => {
-  await page.goto("/auth/callback?next=https://evil.com");
+test.describe("signed in", () => {
+  test("a valid session opens the private page", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-session");
 
-  await expect(page).toHaveURL(/localhost.*\/sign-in\?error=link$/);
-  await expect(page.getByRole("main").getByRole("alert")).toHaveText("That link didn't work or has expired. Send a new one.");
-});
+    await page.goto("/my-day");
 
-test("the sign-in page has no accessibility violations", async ({ page }) => {
-  await page.goto("/sign-in?error=link");
+    await expect(page).toHaveURL(/\/my-day$/);
+    await expect(page.getByRole("heading", { level: 1, name: "My day" })).toBeVisible();
+    await expect(page.getByText("Signed in as Maya Chen.")).toBeVisible();
+    await expect(page.getByText("Your workspace is ready.")).toBeVisible();
+  });
 
-  const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
-  expect(results.violations).toEqual([]);
-});
+  test("my day has no accessibility violations", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-session");
 
-test("the home page leads to sign-in", async ({ page }) => {
-  await page.goto("/");
+    await page.goto("/my-day");
 
-  await page.getByRole("link", { name: "Sign in" }).click();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
+    expect(results.violations).toEqual([]);
+  });
 
-  await expect(page).toHaveURL(/\/sign-in$/);
+  test("the sign-in page sends signed-in users onward", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-session");
+
+    await page.goto("/sign-in");
+
+    await expect(page).toHaveURL(/\/my-day$/);
+  });
+
+  test("signing out ends the session", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-session");
+    await page.goto("/my-day");
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`^${baseURL}/?$`));
+    await page.goto("/my-day");
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
+
+  test("signing out clears the cookie when set by the app", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-session");
+    await page.goto("/my-day");
+
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(new RegExp(`^${baseURL}/?$`));
+
+    const cookies = await context.cookies();
+    expect(cookies.filter((cookie) => cookie.name.startsWith("sb-") && cookie.value)).toEqual([]);
+  });
+
+  test.describe("timezone", () => {
+    test.use({ timezoneId: "America/New_York" });
+
+    test("is saved from the browser at first sign-in", async ({ page, context, baseURL, request }) => {
+      await setSession(context, baseURL, "good-session");
+
+      await page.goto("/my-day");
+
+      await expect
+        .poll(async () => (await request.get("http://127.0.0.1:54399/test/timezones")).json())
+        .toContain("America/New_York");
+    });
+  });
+
+  test("an account with no profile still loads and can sign out", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-no-profile");
+
+    await page.goto("/my-day");
+
+    await expect(page.getByText("Signed in as maya@example.com.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  });
+
+  test("a database outage shows a way out instead of a dead end", async ({ page, context, baseURL }) => {
+    await setSession(context, baseURL, "good-db-down");
+
+    await page.goto("/my-day");
+
+    await expect(page.getByRole("heading", { level: 1, name: "Something went wrong" })).toBeVisible();
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await expect(page).toHaveURL(new RegExp(`^${baseURL}/?$`));
+    await page.goto("/my-day");
+    await expect(page).toHaveURL(/\/sign-in/);
+  });
 });

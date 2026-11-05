@@ -15,6 +15,12 @@ if (!url || !publishableKey || !secretKey) {
   throw new Error("Set TEST_SUPABASE_URL, TEST_SUPABASE_PUBLISHABLE_KEY and TEST_SUPABASE_SECRET_KEY in .env.local");
 }
 
+// A deliberate second step, so these variables can't point at production by accident.
+const projectRef = new URL(url).hostname.split(".")[0];
+if (process.env.VERCEL || process.env.TEST_SUPABASE_DEV_PROJECT_REF !== projectRef) {
+  throw new Error("Live tests run only on the dev project. Set TEST_SUPABASE_DEV_PROJECT_REF to its project ref.");
+}
+
 const TABLES = [
   "profiles",
   "workspaces",
@@ -74,7 +80,9 @@ beforeAll(async () => {
 
 afterAll(async () => {
   for (const id of created) {
-    await admin.auth.admin.deleteUser(id);
+    const { error } = await admin.auth.admin.deleteUser(id);
+    // Already deleted by the account deletion test.
+    if (error && error.status !== 404) throw error;
   }
 });
 
@@ -118,8 +126,23 @@ describe("isolation on real Supabase", () => {
     expect(error).not.toBeNull();
   });
 
-  it("never returns Google tokens to their owner", async () => {
-    const { error } = await a.client.from("integrations").select("refresh_token_enc");
+  it.each(["*", "refresh_token_enc", "access_token_enc"])("never returns Google tokens to their owner with select=%s", async (columns) => {
+    const { error } = await a.client.from("integrations").select(columns);
+    expect(error).not.toBeNull();
+  });
+
+  it("never returns Google tokens through an embedded select", async () => {
+    const { error } = await a.client.from("workspace_members").select("integrations(*)");
+    expect(error).not.toBeNull();
+  });
+
+  it("blocks changing your own role", async () => {
+    const { error } = await a.client.from("workspace_members").update({ role: "admin" }).eq("user_id", a.id);
+    expect(error).not.toBeNull();
+  });
+
+  it.each(["handle_new_user", "is_member"])("blocks signed-out visitors from calling %s", async (name) => {
+    const { error } = await anon.rpc(name, name === "is_member" ? { ws: a.workspaceId } : {});
     expect(error).not.toBeNull();
   });
 });

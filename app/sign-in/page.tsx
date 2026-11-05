@@ -1,23 +1,23 @@
 import type { Metadata } from "next";
-import { secondaryButton } from "@/components/button-styles";
-import { MagicLinkForm } from "@/components/magic-link-form";
+import { GoogleButton, MagicLinkForm } from "@/components/magic-link-form";
 import { safeNextPath } from "@/lib/auth/routes";
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import { sendMagicLink, signInWithGoogle } from "./actions";
 
 export const metadata: Metadata = { title: "Sign in · FollowThrough" };
 
-const errors: Record<string, string> = {
-  link: "That link didn't work or has expired. Send a new one.",
-  google: "We couldn't reach Google. Try again.",
-};
+const errors = new Map([
+  ["link", "That link didn't work or has expired. Send a new one."],
+  ["google", "We couldn't reach Google. Try again."],
+  ["provider", "We couldn't sign you in. Try again."],
+]);
 
 type Props = { searchParams: Promise<{ next?: string | string[]; error?: string | string[] }> };
 
 export default async function SignInPage({ searchParams }: Props) {
   const params = await searchParams;
   const next = safeNextPath(typeof params.next === "string" ? params.next : null);
-  const error = typeof params.error === "string" ? errors[params.error] : undefined;
+  const error = typeof params.error === "string" ? errors.get(params.error) : undefined;
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-6 px-4 py-12">
@@ -34,9 +34,7 @@ export default async function SignInPage({ searchParams }: Props) {
         <>
           <form action={signInWithGoogle}>
             <input type="hidden" name="next" value={next} />
-            <button type="submit" className={`${secondaryButton} w-full`}>
-              Continue with Google
-            </button>
+            <GoogleButton />
           </form>
           <p className="text-center text-ink-muted">or</p>
           <MagicLinkForm action={sendMagicLink} next={next} />

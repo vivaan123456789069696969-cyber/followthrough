@@ -28,9 +28,10 @@ $$;
 
 create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
-  full_name text,
-  avatar_url text,
-  timezone text, -- null until detected from the browser at first sign-in
+  full_name text check (char_length(full_name) <= 200),
+  avatar_url text check (char_length(avatar_url) <= 2000 and avatar_url ~ '^https://'),
+  -- Null until detected from the browser at first sign-in.
+  timezone text check (char_length(timezone) <= 100 and timezone ~ '^[A-Za-z0-9_+/-]+$'),
   onboarding_done boolean not null default false,
   note_retention_days integer check (note_retention_days > 0), -- null = keep
   created_at timestamptz not null default now(),
@@ -63,7 +64,7 @@ create table public.contacts (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces (id) on delete cascade,
   display_name text not null check (char_length(display_name) between 1 and 200),
-  email text,
+  email text check (char_length(email) <= 320),
   linked_user_id uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -78,18 +79,16 @@ create table public.meetings (
   title text not null check (char_length(title) between 1 and 300),
   starts_at timestamptz not null,
   source text not null default 'manual' check (source in ('manual', 'google_calendar', 'wispr_import')),
-  external_event_id text,
-  attendees jsonb not null default '[]'::jsonb check (jsonb_typeof(attendees) = 'array'),
+  external_event_id text check (char_length(external_event_id) <= 1024),
+  attendees jsonb not null default '[]'::jsonb check (jsonb_typeof(attendees) = 'array' and pg_column_size(attendees) <= 65536),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (id, workspace_id)
+  unique (id, workspace_id),
+  -- One meeting per calendar event, so an event can't be imported twice. Nulls don't conflict.
+  unique (workspace_id, external_event_id)
 );
 
 create index meetings_workspace_starts_at_idx on public.meetings (workspace_id, starts_at desc);
--- One meeting per calendar event, so an event can't be imported twice.
-create unique index meetings_workspace_external_event_idx
-  on public.meetings (workspace_id, external_event_id)
-  where external_event_id is not null;
 
 create table public.meeting_notes (
   id uuid primary key default gen_random_uuid(),
@@ -98,7 +97,7 @@ create table public.meeting_notes (
   raw_text text not null check (char_length(raw_text) <= 100000),
   source_format text not null check (source_format in ('paste', 'txt', 'md', 'vtt', 'srt', 'docx', 'wispr_import')),
   has_timestamps boolean not null default false,
-  content_hash text not null,
+  content_hash text not null, -- set by a trigger from raw_text, never by the client
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
@@ -138,7 +137,7 @@ create table public.tasks (
   meeting_id uuid,
   suggestion_id uuid,
   title text not null check (char_length(title) between 1 and 300),
-  description text,
+  description text check (char_length(description) <= 10000),
   owner_user_id uuid,
   owner_contact_id uuid,
   due_date date,
@@ -151,6 +150,8 @@ create table public.tasks (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (id, workspace_id),
+  -- Confirming a suggestion twice can't create two tasks. Nulls don't conflict.
+  unique (suggestion_id),
   check (owner_user_id is null or owner_contact_id is null),
   foreign key (meeting_id, workspace_id) references public.meetings (id, workspace_id) on delete set null (meeting_id),
   foreign key (suggestion_id, workspace_id) references public.suggestions (id, workspace_id) on delete set null (suggestion_id),
@@ -169,7 +170,7 @@ create table public.task_events (
   workspace_id uuid not null,
   actor_id uuid references auth.users (id) on delete set null,
   type text not null check (type in ('created', 'edited', 'done', 'reopened', 'snoozed', 'synced', 'reminded')),
-  payload jsonb not null default '{}'::jsonb,
+  payload jsonb not null default '{}'::jsonb check (pg_column_size(payload) <= 16384),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   foreign key (task_id, workspace_id) references public.tasks (id, workspace_id) on delete cascade
@@ -220,7 +221,7 @@ create table public.reminder_prefs (
   day_before boolean not null default false,
   quiet_start time,
   quiet_end time,
-  types jsonb not null default '{}'::jsonb,
+  types jsonb not null default '{}'::jsonb check (pg_column_size(types) <= 4096),
   unsubscribe_token text not null unique default gen_random_uuid()::text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -294,6 +295,21 @@ create trigger prevent_raw_text_change
   before update on public.meeting_notes
   for each row execute function public.prevent_raw_text_change();
 
+create function public.set_content_hash()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  new.content_hash = encode(sha256(convert_to(new.raw_text, 'UTF8')), 'hex');
+  return new;
+end;
+$$;
+
+create trigger set_content_hash
+  before insert on public.meeting_notes
+  for each row execute function public.set_content_hash();
+
 -- ---------------------------------------------------------------------------
 -- Membership helpers. SECURITY DEFINER so policies on workspace_members don't recurse.
 -- ---------------------------------------------------------------------------
@@ -336,12 +352,14 @@ set search_path = ''
 as $$
 declare
   new_workspace_id uuid;
+  avatar text := new.raw_user_meta_data ->> 'avatar_url';
 begin
+  -- Sign-up details are user-controlled. Trim or drop them so bad values can't block sign-up.
   insert into public.profiles (id, full_name, avatar_url)
   values (
     new.id,
-    coalesce(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name'),
-    new.raw_user_meta_data ->> 'avatar_url'
+    left(coalesce(new.raw_user_meta_data ->> 'full_name', new.raw_user_meta_data ->> 'name'), 200),
+    case when char_length(avatar) <= 2000 and avatar ~ '^https://' then avatar end
   );
 
   insert into public.workspaces (name, kind, created_by)
@@ -435,7 +453,12 @@ create policy "tasks_delete_member" on public.tasks for delete to authenticated
 create policy "task_events_select_member" on public.task_events for select to authenticated
   using (public.is_member(workspace_id));
 create policy "task_events_insert_member" on public.task_events for insert to authenticated
-  with check (public.is_member(workspace_id) and actor_id = (select auth.uid()));
+  -- 'synced' and 'reminded' record things only the server did.
+  with check (
+    public.is_member(workspace_id)
+    and actor_id = (select auth.uid())
+    and type in ('created', 'edited', 'done', 'reopened', 'snoozed')
+  );
 
 create policy "integrations_select_self" on public.integrations for select to authenticated
   using (user_id = (select auth.uid()));
@@ -463,6 +486,12 @@ create policy "ai_usage_select_self" on public.ai_usage for select to authentica
 revoke all on all tables in schema public from anon, authenticated;
 revoke all on all functions in schema public from public, anon, authenticated;
 
+-- The same for anything a later migration creates, so nothing is open by accident.
+alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
+alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
+alter default privileges for role postgres in schema public revoke all on functions from anon, authenticated;
+alter default privileges for role postgres revoke execute on functions from public;
+
 grant all on all tables in schema public to service_role;
 grant execute on all functions in schema public to service_role;
 
@@ -488,14 +517,16 @@ grant update (title, starts_at, attendees) on public.meetings to authenticated;
 
 -- Notes are insert-and-delete only for clients.
 grant select, delete on public.meeting_notes to authenticated;
-grant insert (meeting_id, workspace_id, raw_text, source_format, has_timestamps, content_hash, created_by) on public.meeting_notes to authenticated;
+grant insert (meeting_id, workspace_id, raw_text, source_format, has_timestamps, created_by) on public.meeting_notes to authenticated;
 
 -- Suggestions are created by the server after it verifies the quote against the notes.
 grant select, delete on public.suggestions to authenticated;
 grant update (title, owner_name, owner_contact_id, due_date, status) on public.suggestions to authenticated;
 
+-- A task's source comes only from a verified suggestion, copied by the server when
+-- the user confirms it. Clients can create manual tasks, which have no source.
 grant select, delete on public.tasks to authenticated;
-grant insert (workspace_id, meeting_id, suggestion_id, title, description, owner_user_id, owner_contact_id, due_date, snoozed_until, status, source_quote, source_locator, completed_at, created_by) on public.tasks to authenticated;
+grant insert (workspace_id, meeting_id, title, description, owner_user_id, owner_contact_id, due_date, snoozed_until, status, completed_at, created_by) on public.tasks to authenticated;
 grant update (title, description, owner_user_id, owner_contact_id, due_date, snoozed_until, status, completed_at) on public.tasks to authenticated;
 
 -- The activity log is append-only for clients.

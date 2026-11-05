@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 export type EmailSignInState =
   | { status: "idle" }
   | { status: "sent"; email: string }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; email: string };
 
 const emailSchema = z.email().max(320);
 
@@ -19,8 +19,9 @@ function callbackUrl(next: FormDataEntryValue | null) {
 }
 
 export async function sendMagicLink(_previous: EmailSignInState, formData: FormData): Promise<EmailSignInState> {
-  const email = emailSchema.safeParse(String(formData.get("email") ?? "").trim());
-  if (!email.success) return { status: "error", message: "Enter a valid email address." };
+  const typed = String(formData.get("email") ?? "").trim();
+  const email = emailSchema.safeParse(typed);
+  if (!email.success) return { status: "error", message: "Enter a valid email address.", email: typed.slice(0, 320) };
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithOtp({
@@ -32,7 +33,8 @@ export async function sendMagicLink(_previous: EmailSignInState, formData: FormD
     console.error(JSON.stringify({ event: "magic_link_failed", code: error.code ?? "unknown", status: error.status }));
     return {
       status: "error",
-      message: error.status === 429 ? "Too many requests. Try again in a minute." : "We couldn't send the link. Try again.",
+      message: error.status === 429 ? "Too many requests. Try again later." : "We couldn't send the link. Try again.",
+      email: email.data,
     };
   }
 

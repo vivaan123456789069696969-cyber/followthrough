@@ -31,12 +31,18 @@ describe("MagicLinkForm", () => {
   });
 
   it("shows errors in a way screen readers announce", async () => {
-    render(<MagicLinkForm action={async () => ({ status: "error", message: "We couldn't send the link. Try again." })} next="/my-day" />);
+    render(
+      <MagicLinkForm
+        action={async () => ({ status: "error", message: "We couldn't send the link. Try again.", email: "maya@example.com" })}
+        next="/my-day"
+      />,
+    );
 
     await submit("maya@example.com");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("We couldn't send the link");
     expect(screen.getByLabelText("Email")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("Email")).toHaveValue("maya@example.com");
     expect(screen.getByLabelText("Email")).toHaveAccessibleDescription("We couldn't send the link. Try again.");
   });
 });

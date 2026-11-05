@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { routeDecision } from "@/lib/auth/routes";
-import { getSupabaseEnv } from "./env";
+import { getSupabaseEnv, sessionCookieOptions, supabaseFetch } from "./env";
 import type { Database } from "./types";
 
 /** Refreshes the session cookie and sends signed-out visitors to sign-in. */
@@ -18,6 +18,8 @@ export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(env.url, env.publishableKey, {
+    cookieOptions: sessionCookieOptions,
+    global: { fetch: supabaseFetch },
     cookies: {
       getAll() {
         return request.cookies.getAll();
@@ -32,8 +34,9 @@ export async function updateSession(request: NextRequest) {
   });
 
   // getClaims verifies the token. getSession would trust whatever the cookie says.
-  const { data } = await supabase.auth.getClaims();
-  const isSignedIn = Boolean(data?.claims?.sub);
+  // A malformed token can make this throw. That counts as signed out, not as an error page.
+  const claims = await supabase.auth.getClaims().catch(() => null);
+  const isSignedIn = Boolean(claims?.data?.claims?.sub);
 
   const redirectTo = routeDecision({ pathname, search, isSignedIn });
   if (!redirectTo) return response;

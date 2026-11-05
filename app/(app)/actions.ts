@@ -3,10 +3,19 @@
 import { redirect } from "next/navigation";
 import { isValidTimezone } from "@/lib/auth/timezone";
 import { requireSession } from "@/lib/auth/session";
+import { getSupabaseEnv } from "@/lib/supabase/env";
+import { createClient } from "@/lib/supabase/server";
 
+/**
+ * Signs out of this device. The session is cleared here even if Supabase can't be
+ * reached, so this also works from the error page and during an outage.
+ */
 export async function signOut() {
-  const { supabase } = await requireSession();
-  await supabase.auth.signOut();
+  if (getSupabaseEnv()) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) console.error(JSON.stringify({ event: "sign_out_failed", code: error.code ?? "unknown" }));
+  }
   redirect("/");
 }
 

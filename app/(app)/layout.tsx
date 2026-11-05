@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 sm:px-8">
-      {profile.timezone ? null : <TimezoneSync save={saveDetectedTimezone} />}
+      {profile && !profile.timezone ? <TimezoneSync save={saveDetectedTimezone} /> : null}
       <header className="flex items-center justify-between py-4">
         <p className="text-base font-semibold tracking-tight text-brand">followthrough</p>
         <form action={signOut}>

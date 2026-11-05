@@ -20,7 +20,7 @@
 - App URL: Vercel URLs for now, custom domain later (kept in an env var)
 - Resend from / reply-to: PENDING, ask before Phase 6 (env var RESEND_FROM)
 - Git: public GitHub repo named followthrough (changed from private on 2026-11-05). MIT license, copyright Volo India. Repo secrets must never reach fork pull requests.
-- Tests: separate Supabase project for dev and RLS tests, also run in GitHub Actions. No Docker locally.
+- Tests: separate Supabase project for dev and live tests, run from a developer's machine only. RLS tests in CI use PGlite and need no keys. Never give CI real keys or use `pull_request_target`. No Docker locally.
 
 ### Product (2026-11-05)
 - Email sign-in: magic link
@@ -59,6 +59,15 @@
 - Magic-link sender: the user sets it directly in Supabase's SMTP settings, on the verified domain. Not recorded in this public repo.
 - Phase 0 approved with the CI check left open.
 - RLS tests run on PGlite (real Postgres in-process) as part of npm test, needing no Docker or keys. `npm run test:live` repeats the key checks on the real test project.
+
+### From the Phase 1 reviews (2026-11-05)
+- Open, must settle before real users: Supabase's email provider also accepts passwords through its public API, which may let someone plant a password on another person's account. This can only be tested on a real project. Steps are in the README. If confirmed, add a migration that clears passwords on auth.users, with a live test.
+- Hosted on Vercel, project `followthrough`, https://followthrough-two.vercel.app. Deployed from the CLI; not yet linked to GitHub for automatic deploys.
+- Sign-out ends the session on this device only. All Supabase calls run on the server and session cookies are httpOnly, so there is no browser client.
+- Task sources come only from a verified suggestion, copied by the server. Clients can't write a task's quote, locator or suggestion link. Phase 3 needs a server path for confirming.
+- A deleted note's quote stays on tasks made from it, so commitments keep their source. Phase 4's retention wording must say so.
+- Add by Phase 2 or 3: a per-user storage limit on notes, CAPTCHA on sign-in, and a rule that every route handler calls requireSession.
+- Before team features: deleting a creator's account deletes the whole workspace, and any member can delete notes. Revisit both.
 
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.

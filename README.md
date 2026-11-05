@@ -65,6 +65,10 @@ You need two projects, so real data is never on your machine or in tests:
 
 Use the publishable and secret keys, not the older `anon` and `service_role` keys, which Supabase is retiring.
 
+Use new, empty projects, with the Data API on and `public` exposed. The migration fails on a project that used Supabase's starter template, and it needs Postgres 15 or later. Find each project's URL and keys in its **Connect** dialog.
+
+Migrate before anyone signs in, because accounts created earlier won't have a profile. In `.env.local`, use `http://localhost:3000` for `NEXT_PUBLIC_APP_URL` and open the app at that same address, not `127.0.0.1`, or sign-in links will fail.
+
 Link the CLI to the dev and test project. It asks for that project's database password:
 
 ```bash
@@ -75,7 +79,7 @@ npx supabase login
 npx supabase link --project-ref YOUR_DEV_PROJECT_REF
 ```
 
-`npm run db:migrate` then applies migrations to the dev and test project. To migrate production, pass its ref explicitly:
+`npm run db:migrate` then applies migrations to the dev and test project. Run `npm run db:types` straight after, which replaces the temporary hand-written types. To migrate production, pass its ref explicitly:
 
 ```bash
 npx supabase db push --remote=YOUR_PRODUCTION_PROJECT_REF
@@ -84,18 +88,21 @@ npx supabase db push --remote=YOUR_PRODUCTION_PROJECT_REF
 In each project, under Authentication:
 
 1. Set the **Site URL** to that project's app URL.
-2. Add **Redirect URLs**. Dev and test: `http://localhost:3000/**`. Production: your exact deployed URLs, with no localhost.
-3. Turn on the **Email** provider for magic links, and keep **Confirm email** on. Sign-up with a password stays technically possible through this provider, so an unconfirmed address must not get in.
+2. Add **Redirect URLs**. Dev and test: `http://localhost:3000/**`. Production: `https://YOUR_APP/auth/callback**`, with no localhost. Never add a wildcard covering all of `vercel.app`: anyone can host a site there, and sign-in links could then be sent to it.
+3. Turn on the **Email** provider for magic links, and keep **Confirm email** on.
 4. Turn on the **Google** provider using the sign-in client from the Google section.
 5. Under **SMTP**, connect Resend, using the values from the Resend section.
+6. Check these are set: anonymous sign-in off, manual linking off, minimum password length 12, secure password change on, double email-change confirmation on.
 
 Production auth settings live in the dashboard. Don't run `supabase config push` against production, because `supabase/config.toml` holds local values such as the site URL.
+
+**Check before real users sign up:** the email provider also accepts passwords through Supabase's public API, even though this app has no password screen. On the dev project, try this with an inbox you control: sign up with a password through the API, click the confirmation link, then try signing in with that password. See the open item in [docs/DECISIONS.md](docs/DECISIONS.md).
 
 After migrating the dev and test project, run `npm run test:live` to check signup and isolation there. It creates test users and deletes them when it finishes. Keep these values out of GitHub: `npm test` covers RLS in CI without them.
 
 ### Google Cloud (sign-in in Phase 1, Calendar and Tasks in Phase 5)
 
-1. **Sign-in:** create an OAuth client of type Web application. Add `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback` as a redirect URI, once for each Supabase project. Enter its ID and secret in Supabase's Google provider, not in `.env.local`. Sign-in asks only for basic profile and email.
+1. **Sign-in:** create an OAuth client of type Web application. Add `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback` as a redirect URI, once for each Supabase project. Enter its ID and secret in Supabase's Google provider, not in `.env.local`. Sign-in asks only for basic profile and email. Set up the consent screen first. While the app is in Testing, add yourself as a test user, or Google refuses with `access_denied`.
 2. **Calendar and Tasks (Phase 5):** enable the Google Calendar API and Google Tasks API, and add their scopes to the consent screen. Create a second OAuth client for this flow. Add `http://localhost:3000/api/google/callback` and your deployed callback URL as redirect URIs. Put its ID and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and set `GOOGLE_REDIRECT_URI` to match.
 3. **Testing mode:** Calendar and Tasks scopes are sensitive, so the app stays in Testing until Google verifies it.
    - Only people listed under **Test users** can authorize it, up to 100.
@@ -116,7 +123,7 @@ Add your API key to `ANTHROPIC_API_KEY`. The model is set by `ANTHROPIC_MODEL`, 
 ### Vercel (first deploy)
 
 1. Import the GitHub repo. Vercel detects Next.js.
-2. Add the production environment variables. Never prefix server secrets with `NEXT_PUBLIC_`.
+2. Add the production environment variables, including `NEXT_PUBLIC_APP_URL`, because production won't start sign-in without it. Never prefix server secrets with `NEXT_PUBLIC_`. Scope `SUPABASE_SECRET_KEY` and later server secrets to **Production** only, and point Preview at the dev project, so code in a preview build can't reach production data. `NEXT_PUBLIC_*` values are built in, so redeploy after changing them.
 3. Reminders run from Vercel Cron. The Hobby plan allows one run per day at an imprecise time, and the Pro plan allows one per minute. See [docs/DECISIONS.md](docs/DECISIONS.md) for the schedule in use.
 
 ### Sentry (Phase 8)

@@ -45,7 +45,7 @@ export async function createTestDb() {
     await pg.exec(readFileSync(join(migrationsDir, file), "utf8"));
   }
 
-  /** Run as the database owner, like the server's admin client. Bypasses RLS. */
+  /** Run as the database owner, for setup and for checking results. Bypasses RLS. */
   async function admin<T = Record<string, unknown>>(sql: string, params: unknown[] = []) {
     return pg.query<T>(sql, params);
   }

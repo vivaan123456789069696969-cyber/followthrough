@@ -17,8 +17,10 @@ export function safeNextPath(next: string | null | undefined): string {
   try {
     const base = "http://internal.invalid";
     const resolved = new URL(next, base);
-    if (resolved.origin !== base) return HOME_AFTER_SIGN_IN;
-    return `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    const path = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+    // Dot segments can collapse into "//evil.com" here, after the check above.
+    if (resolved.origin !== base || path.startsWith("//")) return HOME_AFTER_SIGN_IN;
+    return path;
   } catch {
     return HOME_AFTER_SIGN_IN;
   }

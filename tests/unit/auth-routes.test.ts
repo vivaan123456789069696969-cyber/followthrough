@@ -18,6 +18,10 @@ describe("safeNextPath", () => {
     ["a relative path", "my-day"],
     ["a tab inside the slashes", "/\t/evil.com"],
     ["a newline", "/foo\nbar"],
+    ["a dot segment hiding a host", "/.//evil.com"],
+    ["an encoded dot segment", "/%2e//evil.com"],
+    ["a parent segment", "/foo/..//evil.com"],
+    ["a parent segment at the root", "/..//evil.com"],
   ])("falls back to the home page for %s", (_name, value) => {
     expect(safeNextPath(value)).toBe(HOME_AFTER_SIGN_IN);
   });

@@ -102,7 +102,7 @@ const inserts: Record<string, (target: Seeded) => [string, unknown[]]> = {
   contacts: (t) => ["insert into public.contacts (workspace_id, display_name) values ($1, 'x')", [t.workspaceId]],
   meetings: (t) => ["insert into public.meetings (workspace_id, title, starts_at) values ($1, 'x', now())", [t.workspaceId]],
   meeting_notes: (t) => [
-    "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, content_hash, created_by) values ($1, $2, 'x', 'paste', 'h', $3)",
+    "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, created_by) values ($1, $2, 'x', 'paste', $3)",
     [t.meetings, t.workspaceId, t.userId],
   ],
   suggestions: (t) => [
@@ -155,6 +155,10 @@ async function rowExistsUnchanged(table: string, id: string, before: unknown) {
   expect(rows[0]).toEqual(before);
 }
 
+function signUpFresh(email: string) {
+  return db.signUp(email);
+}
+
 beforeAll(async () => {
   db = await createTestDb();
   a = await seed(await db.signUp("a@example.com", { full_name: "Maya Chen", avatar_url: "https://example.com/a.png" }));
@@ -192,7 +196,60 @@ describe("test coverage", () => {
   });
 });
 
+describe("privileges in the database catalog", () => {
+  it("lets signed-in users call only the two membership helpers, and anon nothing", async () => {
+    const { rows } = await db.admin<{ proname: string; anon: boolean; authed: boolean }>(`
+      select p.proname,
+        has_function_privilege('anon', p.oid, 'execute') as anon,
+        has_function_privilege('authenticated', p.oid, 'execute') as authed
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'public'
+    `);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.filter((row) => row.anon)).toEqual([]);
+    expect(rows.filter((row) => row.authed).map((row) => row.proname).sort()).toEqual(["is_member", "is_workspace_owner"]);
+  });
+
+  it("gives anon no access to any table or view", async () => {
+    const { rows } = await db.admin<{ relname: string }>(`
+      select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'public' and c.relkind in ('r', 'p', 'v', 'm', 'f')
+        and (has_table_privilege('anon', c.oid, 'select') or has_table_privilege('anon', c.oid, 'insert')
+          or has_table_privilege('anon', c.oid, 'update') or has_table_privilege('anon', c.oid, 'delete'))
+    `);
+    expect(rows).toEqual([]);
+  });
+
+  it("keeps objects from later migrations closed by default", async () => {
+    await db.admin("create schema probe_marker");
+    await db.admin("create table public.probe_table (id int)");
+    await db.admin("create function public.probe_function() returns int language sql as 'select 1'");
+    try {
+      const { rows } = await db.admin<Record<string, boolean>>(`
+        select has_table_privilege('anon', 'public.probe_table', 'select') as anon_table,
+          has_table_privilege('authenticated', 'public.probe_table', 'select') as authed_table,
+          has_function_privilege('anon', 'public.probe_function()', 'execute') as anon_function,
+          has_function_privilege('authenticated', 'public.probe_function()', 'execute') as authed_function
+      `);
+      expect(rows[0]).toEqual({ anon_table: false, authed_table: false, anon_function: false, authed_function: false });
+    } finally {
+      await db.admin("drop function public.probe_function()");
+      await db.admin("drop table public.probe_table");
+      await db.admin("drop schema probe_marker");
+    }
+  });
+});
+
 describe("signup", () => {
+  it("drops an unsafe avatar and trims a huge name instead of failing", async () => {
+    const { userId } = await db.signUp("odd@example.com", { full_name: "x".repeat(500), avatar_url: "javascript:alert(1)" });
+    const { rows } = await db.admin<{ name_length: number; avatar_url: string | null }>(
+      "select char_length(full_name) as name_length, avatar_url from public.profiles where id = $1",
+      [userId],
+    );
+    expect(rows[0]).toEqual({ name_length: 200, avatar_url: null });
+  });
+
   it("creates a profile from the sign-in details", async () => {
     const { rows } = await db.admin<{ full_name: string; avatar_url: string; timezone: string | null }>(
       "select full_name, avatar_url, timezone from public.profiles where id = $1",
@@ -294,6 +351,50 @@ describe.each(TABLES)("%s", (table) => {
   });
 });
 
+describe("inserting into another workspace while signing as yourself", () => {
+  // Signing as the attacker means only the membership check can stop these.
+  it.each([
+    ["tasks", "insert into public.tasks (workspace_id, title, created_by) values ($1, 'x', $2)", () => [a.workspaceId, b.userId]],
+    [
+      "meeting_notes",
+      "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, created_by) values ($3, $1, 'x', 'paste', $2)",
+      () => [a.workspaceId, b.userId, a.meetings],
+    ],
+    [
+      "task_events",
+      "insert into public.task_events (task_id, workspace_id, actor_id, type) values ($3, $1, $2, 'edited')",
+      () => [a.workspaceId, b.userId, a.tasks],
+    ],
+  ])("is blocked on %s", async (_table, sql, params) => {
+    await expect(db.asUser(b.userId, sql, params())).rejects.toThrow(/row-level security/);
+  });
+
+  it("is blocked when creating reminder settings for a user who has none", async () => {
+    const target = await db.signUp("no-prefs@example.com");
+    await expect(db.asUser(b.userId, "insert into public.reminder_prefs (user_id) values ($1)", [target.userId])).rejects.toThrow(
+      /row-level security/,
+    );
+  });
+});
+
+describe("duplicates", () => {
+  it("blocks two tasks from one suggestion", async () => {
+    const person = await seed(await db.signUp("double-confirm@example.com"));
+    const insert = "insert into public.tasks (workspace_id, title, suggestion_id) values ($1, 'x', $2)";
+    await db.admin(insert, [person.workspaceId, person.suggestions]);
+    await expect(db.admin(insert, [person.workspaceId, person.suggestions])).rejects.toThrow(/unique/);
+  });
+
+  it("blocks importing one calendar event twice, but allows many manual meetings", async () => {
+    const person = await signUpFresh("double-import@example.com");
+    const insert = "insert into public.meetings (workspace_id, title, starts_at, external_event_id) values ($1, 'x', now(), $2)";
+    await db.admin(insert, [person.workspaceId, "event-1"]);
+    await expect(db.admin(insert, [person.workspaceId, "event-1"])).rejects.toThrow(/unique/);
+    await db.admin(insert, [person.workspaceId, null]);
+    await db.admin(insert, [person.workspaceId, null]);
+  });
+});
+
 describe("attacks across workspaces", () => {
   it("blocks joining another workspace", async () => {
     await expect(
@@ -314,7 +415,7 @@ describe("attacks across workspaces", () => {
     await expect(
       db.asUser(
         b.userId,
-        "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, content_hash, created_by) values ($1, $2, 'x', 'paste', 'h', $3)",
+        "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, created_by) values ($1, $2, 'x', 'paste', $3)",
         [a.meetings, b.workspaceId, b.userId],
       ),
     ).rejects.toThrow(/foreign key/);
@@ -322,7 +423,6 @@ describe("attacks across workspaces", () => {
 
   it.each([
     ["meeting", "meeting_id", "meetings"],
-    ["suggestion", "suggestion_id", "suggestions"],
     ["contact", "owner_contact_id", "contacts"],
   ])("blocks a task in your workspace pointing at another user's %s", async (_name, column, source) => {
     await expect(
@@ -358,9 +458,26 @@ describe("attacks across workspaces", () => {
     await expect(db.asUser(b.userId, sql, params)).rejects.toThrow(/row-level security/);
   });
 
-  it("does not let a user call the signup function", async () => {
-    await expect(db.asUser(b.userId, "select public.handle_new_user()")).rejects.toThrow();
-    await expect(db.asAnon("select public.is_member($1)", [a.workspaceId])).rejects.toThrow(/permission denied/);
+  it.each(["suggestion_id", "source_quote", "source_locator"])("blocks a client inventing a task's source through %s", async (column) => {
+    const value = column === "suggestion_id" ? b.suggestions : column === "source_locator" ? LOCATOR : "Maya agreed to refund the client";
+    await expect(
+      db.asUser(b.userId, `insert into public.tasks (workspace_id, title, created_by, ${column}) values ($1, 'x', $2, $3)`, [
+        b.workspaceId,
+        b.userId,
+        value,
+      ]),
+    ).rejects.toThrow(/permission denied/);
+  });
+
+  it.each(["synced", "reminded"])("blocks a client faking a '%s' activity entry", async (type) => {
+    await expect(
+      db.asUser(b.userId, "insert into public.task_events (task_id, workspace_id, actor_id, type) values ($1, $2, $3, $4)", [
+        b.tasks,
+        b.workspaceId,
+        b.userId,
+        type,
+      ]),
+    ).rejects.toThrow(/row-level security/);
   });
 
   it("answers membership checks only about the caller", async () => {
@@ -396,7 +513,45 @@ describe("sensitive columns", () => {
   });
 });
 
+describe("values sent straight to the database", () => {
+  it.each([
+    ["a bad timezone", "timezone = 'x; drop'"],
+    ["a script avatar", "avatar_url = 'javascript:alert(1)'"],
+    ["a huge name", `full_name = '${"x".repeat(201)}'`],
+  ])("rejects %s on a profile", async (_name, assignment) => {
+    await expect(db.asUser(a.userId, `update public.profiles set ${assignment} where id = $1`, [a.userId])).rejects.toThrow(
+      /check constraint/,
+    );
+  });
+
+  it("accepts real timezone names", async () => {
+    for (const timezone of ["Asia/Kolkata", "America/Port-au-Prince", "Etc/GMT+5"]) {
+      const result = await db.asUser(a.userId, "update public.profiles set timezone = $1 where id = $2", [timezone, a.userId]);
+      expect(result.affectedRows).toBe(1);
+    }
+  });
+});
+
 describe("original notes", () => {
+  it("hash the text on the server, whatever the client sends", async () => {
+    const { rows } = await db.asUser<{ id: string }>(
+      a.userId,
+      "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, created_by) values ($1, $2, 'Maya, send it', 'paste', $3) returning id",
+      [a.meetings, a.workspaceId, a.userId],
+    );
+    const stored = await db.admin<{ content_hash: string }>("select content_hash from public.meeting_notes where id = $1", [rows[0]!.id]);
+    const expected = await db.admin<{ hash: string }>("select encode(sha256(convert_to('Maya, send it', 'UTF8')), 'hex') as hash");
+    expect(stored.rows[0]!.content_hash).toBe(expected.rows[0]!.hash);
+
+    await expect(
+      db.asUser(
+        a.userId,
+        "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, created_by, content_hash) values ($1, $2, 'x', 'paste', $3, 'forged')",
+        [a.meetings, a.workspaceId, a.userId],
+      ),
+    ).rejects.toThrow(/permission denied/);
+  });
+
   it("can't be changed by a client", async () => {
     await expect(
       db.asUser(a.userId, "update public.meeting_notes set raw_text = 'edited' where id = $1", [a.meeting_notes]),
@@ -411,7 +566,7 @@ describe("original notes", () => {
     await expect(
       db.asUser(
         a.userId,
-        "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, content_hash, created_by) values ($1, $2, $3, 'paste', 'h', $4)",
+        "insert into public.meeting_notes (meeting_id, workspace_id, raw_text, source_format, created_by) values ($1, $2, $3, 'paste', $4)",
         [a.meetings, a.workspaceId, "x".repeat(100_001), a.userId],
       ),
     ).rejects.toThrow(/check constraint/);
@@ -422,6 +577,15 @@ describe("account deletion", () => {
   it("removes all of a user's data and leaves other users alone", async () => {
     const person = await seed(await db.signUp("leaving@example.com"));
     const others = await seed(await db.signUp("staying@example.com"));
+    // A task linked to everything, so every delete path runs together.
+    await db.admin(
+      "insert into public.tasks (workspace_id, title, meeting_id, suggestion_id, owner_user_id, created_by) values ($1, 'Linked', $2, $3, $4, $4)",
+      [person.workspaceId, person.meetings, person.suggestions, person.userId],
+    );
+    await db.admin("insert into public.tasks (workspace_id, title, owner_contact_id) values ($1, 'For Sam', $2)", [
+      person.workspaceId,
+      person.contacts,
+    ]);
 
     await db.admin("delete from auth.users where id = $1", [person.userId]);
 
