@@ -19,7 +19,7 @@
 - Accounts: Supabase, Google Cloud + consent screen, Resend + verified domain, Vercel, Anthropic API key all exist
 - App URL: Vercel URLs for now, custom domain later (kept in an env var)
 - Resend from / reply-to: PENDING, ask before Phase 6 (env var RESEND_FROM)
-- Git: private GitHub repo named followthrough
+- Git: public GitHub repo named followthrough (changed from private on 2026-11-05). MIT license, copyright Volo India. Repo secrets must never reach fork pull requests.
 - Tests: separate Supabase project for dev and RLS tests, also run in GitHub Actions. No Docker locally.
 
 ### Product (2026-11-05)

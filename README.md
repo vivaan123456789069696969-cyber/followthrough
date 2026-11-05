@@ -121,3 +121,7 @@ Add your API key to `ANTHROPIC_API_KEY`. The model is set by `ANTHROPIC_MODEL`, 
 ### Sentry (Phase 8)
 
 Create a Next.js project in Sentry and set the `SENTRY_*` variables. Meeting notes, task text and other personal data stay out of error reports.
+
+## License
+
+[MIT](LICENSE)
