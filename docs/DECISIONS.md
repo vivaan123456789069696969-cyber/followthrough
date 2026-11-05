@@ -51,7 +51,7 @@
 ### From the Phase 0 reviews (2026-11-05)
 - Supabase projects: production is used only from Vercel. A second project is for local work, seed data and RLS tests.
 - Supabase keys: publishable and secret keys; anon and service_role are being retired by Supabase.
-- Basic security headers ship from Phase 0. CSP and rate limit timing: see BUILD-PLAN.
+- Basic security headers ship from Phase 0. Rate limits and CSP move from Phase 8 to Phase 3.
 - Before Phase 1: enable_confirmations stays on so an unconfirmed address can't sign in; check every public table has RLS in the test suite.
 
 ### CI not active yet (2026-11-05)

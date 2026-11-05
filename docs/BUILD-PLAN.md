@@ -16,7 +16,7 @@ For every phase: implement → tests → run `qa-reviewer` and `security-reviewe
 - ✅ Accept: user can add meeting + notes + manual task and see it on dashboard with correct Due soon/Overdue/Waiting counts (unit-tested date logic in user timezone).
 
 ## Phase 3 — AI extraction + review
-- Skill `ai-task-extraction`. Route, schema, quote verification, date resolution, review UI with highlight, confirm/edit/dismiss, bulk confirm rule.
+- Skill `ai-task-extraction`. Route, schema, quote verification, date resolution, review UI with highlight, confirm/edit/dismiss, bulk confirm rule. Rate limits on AI and import routes, and an enforced CSP, ship here.
 - ✅ Accept: golden fixtures (≥8 transcripts incl. no-owner, no-date, relative date, injection attempt, empty, very long) produce expected suggestions; no fabricated owner/date; every suggestion's quote is found in notes.
 
 ## Phase 4 — Setup/onboarding + Settings
@@ -36,5 +36,5 @@ For every phase: implement → tests → run `qa-reviewer` and `security-reviewe
 - ✅ Accept: sample exports import into a meeting; UI never claims a live connection.
 
 ## Phase 8 — Hardening & launch
-- A11y audit, e2e golden path, perf pass, rate limits, CSP, error pages, seed script, README, deploy to Vercel, post-deploy checklist.
+- A11y audit, e2e golden path, perf pass, review of rate limits and CSP, error pages, seed script, README, deploy to Vercel, post-deploy checklist.
 - ✅ Accept: Product test passes end to end: *after a meeting, each person can see their confirmed commitments and next step.*
