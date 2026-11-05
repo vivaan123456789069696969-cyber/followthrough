@@ -54,6 +54,12 @@
 - Basic security headers ship from Phase 0. Rate limits and CSP move from Phase 8 to Phase 3.
 - Before Phase 1: enable_confirmations stays on so an unconfirmed address can't sign in; check every public table has RLS in the test suite.
 
+### Before Phase 1 (2026-11-05)
+- Vercel plan: Pro, so the 15-minute reminder schedule stays.
+- Magic-link sender: the user sets it directly in Supabase's SMTP settings, on the verified domain. Not recorded in this public repo.
+- Phase 0 approved with the CI check left open.
+- RLS tests run on PGlite (real Postgres in-process) as part of npm test, needing no Docker or keys. `npm run test:live` repeats the key checks on the real test project.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.

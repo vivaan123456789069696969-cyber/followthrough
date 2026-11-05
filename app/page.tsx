@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { primaryButton } from "@/components/button-styles";
+
 export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-2xl flex-col justify-center gap-6 px-4 py-12 sm:px-8">
@@ -7,6 +10,11 @@ export default function HomePage() {
       </h1>
       <p className="text-lg text-ink-muted">
         A workspace that turns meeting notes into clear, owned actions people can actually follow.
+      </p>
+      <p>
+        <Link href="/sign-in" className={primaryButton}>
+          Sign in
+        </Link>
       </p>
     </main>
   );

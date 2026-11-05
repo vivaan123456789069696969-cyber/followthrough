@@ -10,5 +10,6 @@ describe("HomePage", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Meetings end. Follow-through starts." }),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/sign-in");
   });
 });

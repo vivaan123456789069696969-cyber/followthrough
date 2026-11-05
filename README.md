@@ -4,7 +4,7 @@ Meetings end. Follow-through starts.
 
 A workspace that turns meeting notes into clear, owned actions people can actually follow.
 
-**Status:** Phase 0 (empty app, tooling and CI). See [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md).
+**Status:** Phase 1 (sign-in, schema and row level security). See [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md).
 
 ## Run it locally
 
@@ -18,7 +18,7 @@ npm install
 npm run dev
 ```
 
-The app runs at http://localhost:3000. Phase 0 needs no environment variables.
+The app runs at http://localhost:3000. Without Supabase settings, the public pages work and sign-in says it isn't set up.
 
 ## Commands
 
@@ -28,7 +28,8 @@ The app runs at http://localhost:3000. Phase 0 needs no environment variables.
 | `npm run build` | Production build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | Generate route types, then run TypeScript |
-| `npm test` | Unit and integration tests (Vitest) |
+| `npm test` | Unit tests, plus RLS tests on an in-process Postgres. Needs no keys or Docker |
+| `npm run test:live` | Signup and isolation checks on the real dev and test project. Needs the `TEST_SUPABASE_*` values |
 | `npm run test:e2e` | Browser tests against a production build (Playwright). Run `npx playwright install chromium` once first |
 | `npm run db:migrate` | Apply `supabase/migrations` to the linked Supabase project |
 | `npm run db:types` | Regenerate `lib/supabase/types.ts` from the linked project |
@@ -90,7 +91,7 @@ In each project, under Authentication:
 
 Production auth settings live in the dashboard. Don't run `supabase config push` against production, because `supabase/config.toml` holds local values such as the site URL.
 
-RLS tests will run in GitHub Actions from Phase 1. Add the `TEST_SUPABASE_*` values as repository secrets then.
+After migrating the dev and test project, run `npm run test:live` to check signup and isolation there. It creates test users and deletes them when it finishes. Keep these values out of GitHub: `npm test` covers RLS in CI without them.
 
 ### Google Cloud (sign-in in Phase 1, Calendar and Tasks in Phase 5)
 

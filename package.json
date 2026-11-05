@@ -15,21 +15,28 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:live": "vitest run --config vitest.live.config.mts",
     "db:migrate": "supabase db push --remote",
     "db:types": "supabase gen types --lang typescript --remote --schema public > lib/supabase/types.ts"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.119.0",
     "next": "^16.4.5",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
+    "@electric-sql/pglite": "^0.5.15",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4.3.4",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -40,6 +47,7 @@
     "supabase": "^3.0.0",
     "tailwindcss": "^4.3.4",
     "typescript": "^5.9.3",
+    "vite": "^8.3.6",
     "vitest": "^5.1.0"
   }
 }

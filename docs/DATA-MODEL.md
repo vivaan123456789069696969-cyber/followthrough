@@ -19,6 +19,12 @@ All tables: `id uuid pk default gen_random_uuid()`, `created_at`, `updated_at` (
 | `reminder_log` | task_id, user_id, kind, scheduled_for, sent_at, resend_id — unique(task_id,user_id,kind,scheduled_for) for idempotency |
 | `ai_usage` | user_id, note_id, model, input_tokens, output_tokens, cost_usd numeric, created_at |
 
+## Additions made while building
+- `task_events` and `task_syncs` also carry `workspace_id`, so RLS can check them directly.
+- `profiles.timezone` is null until detected at first sign-in.
+- Composite foreign keys tie child rows to the same workspace as their parent. A task's owning user must be a member of its workspace.
+- Clients write only the columns they're granted. Suggestions, usage, sync state, reminder logs and integrations are written by the server.
+
 ## RLS rules
 - Helper `is_member(workspace_id)` SECURITY DEFINER, stable.
 - SELECT/INSERT/UPDATE/DELETE on workspace-scoped tables require `is_member(workspace_id)`.
