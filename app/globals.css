@@ -1,0 +1,90 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens. Source: followthrough-design-system skill.
+ * ink-muted is darker than the deck's #62716E, which is only 4.4:1 on sage-50.
+ * tests/unit/contrast.test.ts checks every text and background pair below.
+ */
+:root {
+  color-scheme: light;
+  --ink: #172b2a;
+  --ink-muted: #5a6966;
+  --brand: #176b58;
+  --on-brand: #ffffff;
+  --brand-deep: #102321;
+  --on-brand-deep: #eef0ec;
+  --sage-50: #eef0ec;
+  --sage-100: #dcebe4;
+  --line: #d9e0da;
+  --surface: #ffffff;
+  --lime: #d6f278;
+  --on-lime: #172b2a;
+  --warm: #f7e6d9;
+  --on-warm: #8a4a26;
+  --lilac: #e9e7fa;
+  --on-lilac: #4b4392;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --ink: #e8efeb;
+    --ink-muted: #a9b8b3;
+    --brand: #7fd6bc;
+    --on-brand: #102321;
+    --brand-deep: #0b1a18;
+    --on-brand-deep: #e8efeb;
+    --sage-50: #102321;
+    --sage-100: #1a3933;
+    --line: #33574e;
+    --surface: #1a3933;
+    --lime: #d6f278;
+    --on-lime: #172b2a;
+    --warm: #4a2f1f;
+    --on-warm: #f7e6d9;
+    --lilac: #33305c;
+    --on-lilac: #e9e7fa;
+  }
+}
+
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand: var(--brand);
+  --color-on-brand: var(--on-brand);
+  --color-brand-deep: var(--brand-deep);
+  --color-on-brand-deep: var(--on-brand-deep);
+  --color-sage-50: var(--sage-50);
+  --color-sage-100: var(--sage-100);
+  --color-line: var(--line);
+  --color-surface: var(--surface);
+  --color-lime: var(--lime);
+  --color-on-lime: var(--on-lime);
+  --color-warm: var(--warm);
+  --color-on-warm: var(--on-warm);
+  --color-lilac: var(--lilac);
+  --color-on-lilac: var(--on-lilac);
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--sage-50);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

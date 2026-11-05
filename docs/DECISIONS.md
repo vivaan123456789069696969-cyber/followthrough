@@ -45,5 +45,9 @@
 - Confirming with blanks: allowed. Task keeps a "Needs owner" / "Needs date" badge; blank-owner tasks appear in My tasks.
 - Due soon tile: the user's own open tasks due today through the next 7 days, excluding overdue.
 
-### Proposed, awaiting approval in the Phase 0 plan
+### Approved with the Phase 0 plan (2026-11-05)
 - ai-task-extraction skill: replace forced tool_choice (400 on current models) with tool_choice auto + strict: true + Zod; replace "temperature low" (400) with output_config.effort; drop 12k-character chunking (100k characters fits one call).
+
+### Tooling notes (2026-11-05)
+- TypeScript stays on 5.x: typescript-eslint supports below 6.1. ESLint stays on 9.x: eslint-plugin-react, import and jsx-a11y do not support 10. Revisit when they do.
+- Commit author is set in this repo only: the GitHub login with its noreply address.
