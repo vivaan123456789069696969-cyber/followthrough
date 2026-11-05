@@ -3,7 +3,9 @@
 /*
  * Design tokens. Source: followthrough-design-system skill.
  * ink-muted is darker than the deck's #62716E, which is only 4.4:1 on sage-50.
- * tests/unit/contrast.test.ts checks every text and background pair below.
+ * tests/unit/contrast.test.ts checks the text and background pairs we use.
+ * The focus ring uses --brand, which is too faint on --brand-deep in light mode,
+ * so give dark surfaces their own ring color when the first one is built.
  */
 :root {
   color-scheme: light;
@@ -20,7 +22,7 @@
   --lime: #d6f278;
   --on-lime: #172b2a;
   --warm: #f7e6d9;
-  --on-warm: #8a4a26;
+  --on-warm: #9a542c;
   --lilac: #e9e7fa;
   --on-lilac: #4b4392;
 }

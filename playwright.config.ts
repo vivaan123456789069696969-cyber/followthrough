@@ -12,12 +12,13 @@ export default defineConfig({
   use: { baseURL, trace: "on-first-retry" },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "phone", use: { ...devices["Desktop Chrome"], viewport: { width: 360, height: 740 } } },
+    { name: "phone", use: { ...devices["Pixel 7"], viewport: { width: 360, height: 740 } } },
   ],
   webServer: {
-    command: `npm run dev -- --port ${port}`,
+    // A production build, so this also works while `npm run dev` holds the dev lock.
+    command: `npm run build && npm run start -- --port ${port}`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    reuseExistingServer: false,
+    timeout: 240_000,
   },
 });

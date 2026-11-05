@@ -4,6 +4,8 @@ You are the lead engineer building **FollowThrough**, a responsive web app. Read
 
 **Before writing any code:** ask the user every question in `docs/OPEN-QUESTIONS.md` and any new doubt you find. Do not assume. After answers, present the Phase 0 plan and wait for approval.
 
+**Where this file and `docs/DECISIONS.md` disagree, DECISIONS wins.** Any "ask the user" below that DECISIONS already answers is closed.
+
 ---
 ## 1. Product
 **Name:** FollowThrough · **Tagline:** Meetings end. Follow-through starts.
@@ -47,7 +49,7 @@ Setup principles shown on screen: **Optional by default · Clear permissions · 
 ### 3.4 AI extraction (see skill `ai-task-extraction`)
 - Server route calls Anthropic Claude API with structured output (tool use + Zod validation).
 - Returns suggestions: `title`, `owner_name|null`, `due_date|null`, `due_date_basis` (quote that justified date), `source_quote` (verbatim), `source_locator`, `confidence`, `open_questions[]` (what is unclear).
-- Rules: never guess owner/date; relative dates ("Thursday") resolve using the meeting date + user timezone and show the resolved date for confirmation; server verifies quote is a substring of notes; dedupe near-duplicates; cap output; handle long notes by chunking.
+- Rules: never guess owner/date; relative dates ("Thursday") resolve using the meeting date + user timezone and show the resolved date for confirmation; server verifies quote is a substring of notes; dedupe near-duplicates; cap output.
 - Show loading, empty ("No actions found — add one manually"), and error states.
 
 ### 3.5 Review screen (deck slide 6)
@@ -55,12 +57,12 @@ Two-pane: left = notes with highlighted source span (click suggestion → scroll
 
 ### 3.6 Dashboard (deck slide 5) — "What needs me?"
 Left nav: **My day · My tasks · Meetings · Settings**. Header: "Good morning, {first name}" + today's date (time-of-day aware greeting). Three stat tiles: **Due soon**, **Overdue**, **Waiting on others**. List "Your next actions" sorted by urgency, each: title, source meeting, due label (Today / Tomorrow / weekday). Calm, not a noisy task list: max ~5 visible, "View all" link. Task detail drawer: title, owner, due, status, source quote with "Open in notes", activity log, mark done, snooze, edit.
-- "Waiting on others" = confirmed tasks whose owner is not the user.
+- "Waiting on others" = confirmed tasks with an owner who is not the user. Blank-owner tasks stay in My tasks with a "Needs owner" badge.
 - Status: `open`, `done`, `dismissed`. Overdue computed from due date + timezone.
 
 ### 3.7 Reminders (deck slide 7) — email via Resend (see skill `resend-reminders`)
 - Reminder with context: "Due today · Send revised launch brief · From Product sync · Open task" (deep link).
-- User settings: reminder timing (e.g. morning digest at chosen time, plus "X hours before due"), **quiet hours**, timezone, on/off, per-type toggles (due today, overdue, upcoming digest).
+- User settings: reminder timing (e.g. morning digest at chosen time, plus an optional "1 day before"), **quiet hours**, timezone, on/off, per-type toggles (due today, overdue, upcoming digest).
 - Cron-driven (Vercel Cron → secured route), idempotent via `reminder_log`, one-click unsubscribe link in every email, honor quiet hours.
 - Reminders only for tasks the user owns (and optionally "waiting on others" digest — ask user).
 

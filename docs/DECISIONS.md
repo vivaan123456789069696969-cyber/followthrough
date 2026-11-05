@@ -48,6 +48,12 @@
 ### Approved with the Phase 0 plan (2026-11-05)
 - ai-task-extraction skill: replace forced tool_choice (400 on current models) with tool_choice auto + strict: true + Zod; replace "temperature low" (400) with output_config.effort; drop 12k-character chunking (100k characters fits one call).
 
+### From the Phase 0 reviews (2026-11-05)
+- Supabase projects: production is used only from Vercel. A second project is for local work, seed data and RLS tests.
+- Supabase keys: publishable and secret keys; anon and service_role are being retired by Supabase.
+- Basic security headers ship from Phase 0. CSP and rate limit timing: see BUILD-PLAN.
+- Before Phase 1: enable_confirmations stays on so an unconfirmed address can't sign in; check every public table has RLS in the test suite.
+
 ### Tooling notes (2026-11-05)
 - TypeScript stays on 5.x: typescript-eslint supports below 6.1. ESLint stays on 9.x: eslint-plugin-react, import and jsx-a11y do not support 10. Revisit when they do.
 - Commit author is set in this repo only: the GitHub login with its noreply address.

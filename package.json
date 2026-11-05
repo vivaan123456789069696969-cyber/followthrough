@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=24.15.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -14,8 +14,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "db:migrate": "supabase db push",
-    "db:types": "supabase gen types typescript --linked --schema public > lib/supabase/types.ts"
+    "db:migrate": "supabase db push --remote",
+    "db:types": "supabase gen types --lang typescript --remote --schema public > lib/supabase/types.ts"
   },
   "dependencies": {
     "next": "^16.4.5",

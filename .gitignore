@@ -16,6 +16,15 @@ playwright/.cache/
 .env
 .env.*
 !.env.example
+.envrc
+
+# other secret files
+supabase/signing_keys.json
+client_secret*.json
+*service-account*.json
+*.pem
+*.key
+playwright/.auth/
 
 # supabase local state
 supabase/.temp/

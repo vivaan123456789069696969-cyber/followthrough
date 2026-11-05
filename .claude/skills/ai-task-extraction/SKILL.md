@@ -11,13 +11,15 @@ Turn raw meeting notes into **reviewable, sourced** action suggestions. Never fa
 1. **Pre-process**: normalize newlines; detect transcript format (VTT/SRT/`HH:MM` or `MM:SS` prefixes/speaker labels); build a segment index `[{id, start, end, timestamp?, speaker?, text}]`. Cap size (env `MAX_NOTE_CHARS`, 100,000). No chunking: the capped note fits in one call on current models (see `docs/DECISIONS.md`).
 2. **Call Anthropic** (`@anthropic-ai/sdk`, model from `ANTHROPIC_MODEL`) with a system prompt + user content wrapped in `<meeting_notes>` tags. Use **tool use** with a single tool `report_actions` whose input schema matches the Zod schema below. Use `tool_choice: {type: "auto"}`, `strict: true` on the tool, and a prompt instruction to call it; forced `tool_choice` and `temperature` both return a 400 on current models. Set `output_config.effort` explicitly. Check `stop_reason` (including `refusal`) before reading the result. Read the `claude-api` skill before writing this code.
 3. **Validate** with Zod. Reject malformed; retry once with the validation error.
-4. **Verify quotes**: `source_quote` must be a (whitespace-normalized, case-insensitive) substring of the original notes. Compute real `start/end` offsets and timestamp server-side. If not found → drop the suggestion and return a count of removed suggestions for the review screen; never trust model offsets.
+4. **Verify quotes**: `source_quote` must be a (whitespace-normalized, case-insensitive) substring of the original notes. Compute real `start/end` offsets into the immutable `raw_text` (map back if matching ran on normalized text) and the timestamp server-side. Store the matched span from `raw_text` as the quote, so it stays verbatim. If not found → drop the suggestion and return a count of removed suggestions for the review screen; never trust model offsets.
 5. **Resolve dates**: only if an explicit date/relative phrase exists in the quote or adjacent segment. Resolve relative terms ("Thursday", "next week", "end of month") against `meeting.starts_at` in the user's timezone using a deterministic library (date-fns/Temporal), not the model. Store `due_date_basis`. Ambiguous → leave null + add open question.
 6. **Owner**: only explicit ("Maya, can you…", "I'll send…" with known speaker). "We should…" or passive → owner null. Match names to contacts/attendees/profile; ambiguous match → null + open question.
 7. **Dedupe** near-duplicates (normalized title similarity + same quote span). Limit count (e.g. 30).
-8. Persist as `suggestions` (status `pending`), log tokens in `ai_usage`.
+8. Persist as `suggestions` (status `pending`), log tokens and cost in `ai_usage`.
+9. **Cost cap**: before each call, sum the user's `ai_usage.cost_usd` for the month and refuse once it reaches `AI_MONTHLY_CAP_USD`, with a plain message.
 
 ## Zod schema (shape)
+Strict tools may not accept every constraint (for example `min`, `max`, `maxItems`). Check the `claude-api` skill, and enforce any that are not accepted in Zod on the server.
 ```ts
 Suggestion = z.object({
   title: z.string().min(3).max(140),          // imperative verb first, e.g. "Send revised launch brief"
