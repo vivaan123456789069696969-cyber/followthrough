@@ -73,6 +73,10 @@
 - The user chose to skip connecting Supabase for now and start Phase 2. Phase 2 is built and tested against a fake Supabase server and PGlite.
 - Still required before anyone real uses the app: Supabase login, migration, `npm run test:live`, the password risk check, real sign-in by hand.
 
+### Email sign-in (2026-11-06)
+- Default Supabase emails use the code flow, so a link must be opened in the browser that asked for it. /auth/confirm (token hash, works in any browser) is built and tested, but Supabase only allows editing email templates once custom SMTP is set up.
+- When Resend SMTP is connected: set the Magic Link and Confirm signup templates to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`, on both projects, and change the "Open it in this same browser" note.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.

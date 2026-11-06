@@ -64,7 +64,7 @@ test.describe("sign-in page", () => {
     await page.getByLabel("Email").fill("maya@example.com");
     await page.getByRole("button", { name: "Send sign-in link" }).click();
 
-    await expect(page.getByRole("main").getByRole("status")).toContainText("We sent a sign-in link to maya@example.com. It works for about an hour.");
+    await expect(page.getByRole("main").getByRole("status")).toContainText("We sent a sign-in link to maya@example.com. Open it in this same browser.");
     const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
     expect(results.violations).toEqual([]);
   });
