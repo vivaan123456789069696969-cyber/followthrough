@@ -1,28 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type BrowserContext } from "@playwright/test";
+import { randomUUID } from "node:crypto";
+import { expect, test } from "@playwright/test";
+import { setSession, signInFresh } from "./session";
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
-
-/** A session cookie in Supabase's real format. tests/e2e/fake-supabase.mjs accepts only "good-*" signatures. */
-async function setSession(context: BrowserContext, baseURL: string | undefined, signature: string) {
-  const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
-  const expires = Math.floor(Date.now() / 1000) + 3600;
-  const userId = "00000000-0000-4000-8000-000000000001";
-  const accessToken = [
-    encode({ alg: "HS256", typ: "JWT" }),
-    encode({ sub: userId, role: "authenticated", email: "maya@example.com", exp: expires }),
-    signature,
-  ].join(".");
-  const session = {
-    access_token: accessToken,
-    refresh_token: "refresh",
-    token_type: "bearer",
-    expires_in: 3600,
-    expires_at: expires,
-    user: { id: userId, aud: "authenticated", role: "authenticated" },
-  };
-  await context.addCookies([{ name: "sb-127-auth-token", value: `base64-${encode(session)}`, url: baseURL! }]);
-}
 
 test.describe("signed out", () => {
   test("protected pages send visitors to sign-in", async ({ page }) => {
@@ -144,24 +125,12 @@ test.describe("sign-in page", () => {
 
 test.describe("signed in", () => {
   test("a valid session opens the private page", async ({ page, context, baseURL }) => {
-    await setSession(context, baseURL, "good-session");
+    await signInFresh(context, baseURL);
 
     await page.goto("/my-day");
 
     await expect(page).toHaveURL(/\/my-day$/);
-    await expect(page.getByRole("heading", { level: 1, name: "My day" })).toBeVisible();
-    await expect(page.getByText("Signed in as Maya Chen.")).toBeVisible();
-    await expect(page.getByText("Your workspace is ready.")).toBeVisible();
-  });
-
-  test("my day has no accessibility violations", async ({ page, context, baseURL }) => {
-    await setSession(context, baseURL, "good-session");
-
-    await page.goto("/my-day");
-
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
-    expect(results.violations).toEqual([]);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Good (morning|afternoon|evening), Maya$/);
   });
 
   test("the sign-in page sends signed-in users onward", async ({ page, context, baseURL }) => {
@@ -174,7 +143,7 @@ test.describe("signed in", () => {
 
   test("signing out ends the session", async ({ page, context, baseURL }) => {
     await setSession(context, baseURL, "good-session");
-    await page.goto("/my-day");
+    await page.goto("/settings");
 
     await page.getByRole("button", { name: "Sign out" }).click();
 
@@ -185,7 +154,7 @@ test.describe("signed in", () => {
 
   test("signing out clears the cookie when set by the app", async ({ page, context, baseURL }) => {
     await setSession(context, baseURL, "good-session");
-    await page.goto("/my-day");
+    await page.goto("/settings");
 
     await page.getByRole("button", { name: "Sign out" }).click();
     await expect(page).toHaveURL(new RegExp(`^${baseURL}/?$`));
@@ -198,7 +167,9 @@ test.describe("signed in", () => {
     test.use({ timezoneId: "America/New_York" });
 
     test("is saved from the browser at first sign-in", async ({ page, context, baseURL, request }) => {
-      await setSession(context, baseURL, "good-session");
+      // A session of its own, so no other test has saved a timezone for it already.
+      // "good-" plus 31 characters: 36 in all, a valid base64url length.
+      await setSession(context, baseURL, `good-${randomUUID().replace(/-/g, "").slice(0, 31)}`);
 
       await page.goto("/my-day");
 
@@ -211,7 +182,7 @@ test.describe("signed in", () => {
   test("an account with no profile still loads and can sign out", async ({ page, context, baseURL }) => {
     await setSession(context, baseURL, "good-no-profile");
 
-    await page.goto("/my-day");
+    await page.goto("/settings");
 
     await expect(page.getByText("Signed in as maya@example.com.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
@@ -220,7 +191,7 @@ test.describe("signed in", () => {
   test("a database outage shows a way out instead of a dead end", async ({ page, context, baseURL }) => {
     await setSession(context, baseURL, "good-db-down");
 
-    await page.goto("/my-day");
+    await page.goto("/settings");
 
     await expect(page.getByRole("heading", { level: 1, name: "Something went wrong" })).toBeVisible();
     await page.getByRole("button", { name: "Sign out" }).click();

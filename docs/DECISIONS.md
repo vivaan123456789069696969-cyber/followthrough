@@ -69,6 +69,10 @@
 - Add by Phase 2 or 3: a per-user storage limit on notes, CAPTCHA on sign-in, and a rule that every route handler calls requireSession.
 - Before team features: deleting a creator's account deletes the whole workspace, and any member can delete notes. Revisit both.
 
+### Moving on with Phase 1 open (2026-11-05)
+- The user chose to skip connecting Supabase for now and start Phase 2. Phase 2 is built and tested against a fake Supabase server and PGlite.
+- Still required before anyone real uses the app: Supabase login, migration, `npm run test:live`, the password risk check, real sign-in by hand.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.

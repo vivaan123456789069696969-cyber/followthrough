@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { secondaryButton } from "@/components/button-styles";
+import { AppNav } from "@/components/app-nav";
 import { TimezoneSync } from "@/components/timezone-sync";
 import { getProfile, requireSession } from "@/lib/auth/session";
-import { saveDetectedTimezone, signOut } from "./actions";
+import { saveDetectedTimezone } from "./actions";
 
 // Private pages are rendered per request, whatever settings the build ran with.
 export const dynamic = "force-dynamic";
@@ -12,17 +12,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const profile = await getProfile(session);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-3xl flex-col px-4 sm:px-8">
+    <div className="flex min-h-dvh flex-col md:flex-row">
       {profile && !profile.timezone ? <TimezoneSync save={saveDetectedTimezone} /> : null}
-      <header className="flex items-center justify-between py-4">
-        <p className="text-base font-semibold tracking-tight text-brand">followthrough</p>
-        <form action={signOut}>
-          <button type="submit" className={secondaryButton}>
-            Sign out
-          </button>
-        </form>
-      </header>
-      {children}
+      <AppNav />
+      <div className="w-full min-w-0 flex-1 px-4 pt-6 pb-24 sm:px-8 md:pb-10">
+        <div className="mx-auto w-full max-w-3xl">{children}</div>
+      </div>
     </div>
   );
 }

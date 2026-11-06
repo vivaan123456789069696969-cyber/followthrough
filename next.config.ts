@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Meeting notes uploads: 4 MB per file, plus form overhead. Vercel's own limit is 4.5 MB.
+  experimental: { serverActions: { bodySizeLimit: "4.5mb" } },
   async headers() {
     return [
       {
