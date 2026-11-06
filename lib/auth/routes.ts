@@ -2,7 +2,7 @@ export const HOME_AFTER_SIGN_IN = "/my-day";
 const SIGN_IN = "/sign-in";
 
 /** Everything else needs a session, so a new page is private unless it's added here. */
-const PUBLIC_PATHS = new Set(["/", SIGN_IN, "/auth/callback"]);
+const PUBLIC_PATHS = new Set(["/", SIGN_IN, "/auth/callback", "/auth/confirm"]);
 
 /**
  * Only same-site paths are allowed after sign-in. Anything else could send someone

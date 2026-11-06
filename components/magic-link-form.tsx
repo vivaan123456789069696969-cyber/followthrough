@@ -36,7 +36,7 @@ export function MagicLinkForm({ action, next }: Props) {
       <div role="status" className="rounded-lg bg-sage-100 p-4">
         <p className="font-medium text-ink">Check your email</p>
         <p className="mt-1 text-ink-muted">
-          We sent a sign-in link to {state.email}. Open it in this browser.
+          We sent a sign-in link to {state.email}. It works for about an hour.
         </p>
       </div>
     );

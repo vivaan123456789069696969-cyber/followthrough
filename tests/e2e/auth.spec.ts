@@ -64,7 +64,7 @@ test.describe("sign-in page", () => {
     await page.getByLabel("Email").fill("maya@example.com");
     await page.getByRole("button", { name: "Send sign-in link" }).click();
 
-    await expect(page.getByRole("main").getByRole("status")).toContainText("We sent a sign-in link to maya@example.com");
+    await expect(page.getByRole("main").getByRole("status")).toContainText("We sent a sign-in link to maya@example.com. It works for about an hour.");
     const results = await new AxeBuilder({ page }).withTags(WCAG).analyze();
     expect(results.violations).toEqual([]);
   });
@@ -92,6 +92,8 @@ test.describe("sign-in page", () => {
     ["/sign-in?error=link", "That link didn't work or has expired. Send a new one."],
     ["/auth/callback", "That link didn't work or has expired. Send a new one."],
     ["/auth/callback?error=access_denied&error_code=cancelled", "We couldn't sign you in. Try again."],
+    ["/auth/confirm?token_hash=used-up&type=email", "That link didn't work or has expired. Send a new one."],
+    ["/auth/confirm?token_hash=good-token&type=recovery", "That link didn't work or has expired. Send a new one."],
   ] as const) {
     test(`shows the right message for ${path}`, async ({ page }) => {
       await page.goto(path);
@@ -100,6 +102,14 @@ test.describe("sign-in page", () => {
       await expect(page.getByRole("main").getByRole("alert")).toHaveText(message);
     });
   }
+
+  test("an email link signs in from a browser that never asked for it", async ({ page }) => {
+    // A fresh browser with no cookies, like opening the email on another app or device.
+    await page.goto("/auth/confirm?token_hash=good-token&type=email");
+
+    await expect(page).toHaveURL(/\/my-day$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/^Good (morning|afternoon|evening), Maya$/);
+  });
 
   test("ignores unknown error codes, including ones that look like object properties", async ({ page }) => {
     const response = await page.goto("/sign-in?error=constructor");

@@ -28,7 +28,7 @@ describe("safeNextPath", () => {
 });
 
 describe("routeDecision", () => {
-  it.each(["/", "/sign-in", "/auth/callback"])("lets signed-out visitors reach %s", (pathname) => {
+  it.each(["/", "/sign-in", "/auth/callback", "/auth/confirm"])("lets signed-out visitors reach %s", (pathname) => {
     expect(routeDecision({ pathname, search: "", isSignedIn: false })).toBeNull();
   });
 

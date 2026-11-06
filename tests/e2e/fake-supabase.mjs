@@ -108,6 +108,17 @@ createServer(async (request, response) => {
 
   if (url.pathname === "/auth/v1/logout") return send(response, 204);
 
+  if (url.pathname === "/auth/v1/verify") {
+    const body = await readBody(request);
+    if (body.token_hash !== "good-token") return send(response, 403, { code: 403, error_code: "otp_expired", msg: "expired" });
+    const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+    const expires = Math.floor(Date.now() / 1000) + 3600;
+    const user = { id: USER_ID, aud: "authenticated", role: "authenticated", email: "maya@example.com" };
+    // "good-confirm" is 12 characters, a valid base64url length.
+    const accessToken = [encode({ alg: "HS256", typ: "JWT" }), encode({ sub: USER_ID, role: "authenticated", exp: expires }), "good-confirm"].join(".");
+    return send(response, 200, { access_token: accessToken, refresh_token: "refresh", token_type: "bearer", expires_in: 3600, expires_at: expires, user });
+  }
+
   if (url.pathname === "/auth/v1/otp") {
     const body = await readBody(request);
     if (body.email === "fail@example.com") return send(response, 500, { code: 500, msg: "failed" });
