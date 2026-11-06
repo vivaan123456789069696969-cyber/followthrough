@@ -1,0 +1,11 @@
+# Never upload local secrets or build output with a CLI deploy.
+.env
+.env.*
+!.env.example
+.next/
+node_modules/
+coverage/
+test-results/
+playwright-report/
+supabase/.temp/
+*.log

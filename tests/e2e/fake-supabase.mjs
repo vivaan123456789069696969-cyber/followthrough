@@ -14,6 +14,7 @@ function storeFor(token) {
   if (!stores.has(token)) {
     stores.set(token, {
       timezone: token.startsWith("good-utc") ? "UTC" : null,
+      fullName: "Maya Chen",
       workspaceId: randomUUID(),
       tables: { contacts: [], meetings: [], meeting_notes: [], tasks: [], task_events: [] },
     });
@@ -83,6 +84,11 @@ createServer(async (request, response) => {
 
   if (url.pathname === "/health") return send(response, 200, { ok: true });
   if (url.pathname === "/test/timezones") return send(response, 200, savedTimezones);
+  if (url.pathname === "/test/profile") {
+    const { token: profileToken, full_name: fullName } = await readBody(request);
+    storeFor(profileToken).fullName = fullName;
+    return send(response, 200, { ok: true });
+  }
   if (url.pathname === "/test/seed") {
     const { token: seedToken, table, rows } = await readBody(request);
     const store = storeFor(seedToken);
@@ -119,7 +125,7 @@ createServer(async (request, response) => {
     }
     if (table === "profiles") {
       if (token === "good-no-profile") return send(response, 200, []);
-      return send(response, 200, [{ full_name: "Maya Chen", timezone: store.timezone, onboarding_done: false }]);
+      return send(response, 200, [{ full_name: store.fullName, timezone: store.timezone, onboarding_done: false }]);
     }
     if (table === "workspaces") return send(response, 200, [{ name: "Personal" }]);
     if (table === "workspace_members") return send(response, 200, [{ workspace_id: store.workspaceId }]);
