@@ -32,11 +32,16 @@ export default async function SignInPage({ searchParams }: Props) {
 
       {getSupabaseEnv() ? (
         <>
-          <form action={signInWithGoogle}>
-            <input type="hidden" name="next" value={next} />
-            <GoogleButton />
-          </form>
-          <p className="text-center text-ink-muted">or</p>
+          {/* Shown only once Google is set up in Supabase, so it never leads to an error. */}
+          {process.env.NEXT_PUBLIC_GOOGLE_SIGN_IN === "true" ? (
+            <>
+              <form action={signInWithGoogle}>
+                <input type="hidden" name="next" value={next} />
+                <GoogleButton />
+              </form>
+              <p className="text-center text-ink-muted">or</p>
+            </>
+          ) : null}
           <MagicLinkForm action={sendMagicLink} next={next} />
         </>
       ) : (
