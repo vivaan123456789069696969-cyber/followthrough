@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
 import { AppNav } from "@/components/app-nav";
 import { TimezoneSync } from "@/components/timezone-sync";
-import { getProfile, requireSession } from "@/lib/auth/session";
+import { getAppContext } from "@/lib/data/context";
 import { saveDetectedTimezone } from "./actions";
 
 // Private pages are rendered per request, whatever settings the build ran with.
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const session = await requireSession();
-  const profile = await getProfile(session);
+  // Cached for the request, so pages reuse this session and profile.
+  const { profile } = await getAppContext();
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">

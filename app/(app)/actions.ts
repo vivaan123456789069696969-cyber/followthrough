@@ -20,10 +20,14 @@ export async function signOut() {
 }
 
 /** Saves the browser's timezone at first sign-in. Never overwrites one already set. */
-export async function saveDetectedTimezone(timezone: unknown) {
-  if (!isValidTimezone(timezone)) return;
+export async function saveDetectedTimezone(timezone: unknown): Promise<boolean> {
+  if (!isValidTimezone(timezone)) return false;
 
   const { supabase, userId } = await requireSession();
   const { error } = await supabase.from("profiles").update({ timezone }).eq("id", userId).is("timezone", null);
-  if (error) console.error(JSON.stringify({ event: "save_timezone_failed", code: error.code }));
+  if (error) {
+    console.error(JSON.stringify({ event: "save_timezone_failed", code: error.code }));
+    return false;
+  }
+  return true;
 }

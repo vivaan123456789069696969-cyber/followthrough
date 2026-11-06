@@ -22,11 +22,13 @@ type Props = {
 
 export function TaskForm({ returnTo, meetingId, contacts, task }: Props) {
   const [state, action] = useActionState(saveTask, { error: null });
+  // After an error the server sends back what was typed, so nothing is lost.
+  const values = state.values;
   const startingOwner = !task ? "me" : task.owner_user_id ? "me" : task.owner_contact_id ? "other" : "none";
   const [ownerKind, setOwnerKind] = useState(startingOwner);
 
   return (
-    <form action={action} className="flex flex-col gap-4">
+    <form action={action} key={JSON.stringify(values ?? {})} className="flex flex-col gap-4">
       <input type="hidden" name="id" value={task?.id ?? ""} />
       <input type="hidden" name="meeting_id" value={meetingId ?? ""} />
       <input type="hidden" name="return_to" value={returnTo} />
@@ -35,7 +37,7 @@ export function TaskForm({ returnTo, meetingId, contacts, task }: Props) {
         <label htmlFor="title" className={labelClass}>
           Task
         </label>
-        <input id="title" name="title" required maxLength={300} defaultValue={task?.title} className={inputClass} />
+        <input id="title" name="title" required maxLength={300} defaultValue={values?.title ?? task?.title} className={inputClass} />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -66,7 +68,7 @@ export function TaskForm({ returnTo, meetingId, contacts, task }: Props) {
             required
             maxLength={200}
             list="contact-names"
-            defaultValue={task?.owner_name ?? ""}
+            defaultValue={values?.owner_name ?? task?.owner_name ?? ""}
             className={inputClass}
           />
           <datalist id="contact-names">
@@ -81,14 +83,21 @@ export function TaskForm({ returnTo, meetingId, contacts, task }: Props) {
         <label htmlFor="due_date" className={labelClass}>
           Due date
         </label>
-        <input id="due_date" name="due_date" type="date" defaultValue={task?.due_date ?? ""} className={inputClass} />
+        <input id="due_date" name="due_date" type="date" defaultValue={values?.due_date ?? task?.due_date ?? ""} className={inputClass} />
       </div>
 
       <div className="flex flex-col gap-1.5">
         <label htmlFor="description" className={labelClass}>
           Details (optional)
         </label>
-        <textarea id="description" name="description" rows={3} maxLength={10000} defaultValue={task?.description ?? ""} className={`${inputClass} py-2`} />
+        <textarea
+          id="description"
+          name="description"
+          rows={3}
+          maxLength={10000}
+          defaultValue={values?.description ?? task?.description ?? ""}
+          className={`${inputClass} py-2`}
+        />
       </div>
 
       <FormError message={state.error} />

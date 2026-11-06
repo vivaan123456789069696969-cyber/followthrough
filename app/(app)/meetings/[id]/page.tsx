@@ -89,7 +89,7 @@ export default async function MeetingPage({
         <h2 id="notes-heading" className="text-lg font-semibold text-ink">
           Notes
         </h2>
-        {notes.map((note) => (
+        {notes.map((note, index) => (
           <Card key={note.id} className="flex flex-col gap-3 p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="flex flex-wrap gap-1.5">
@@ -104,7 +104,7 @@ export default async function MeetingPage({
                 </ConfirmButton>
               </form>
             </div>
-            <div tabIndex={0} role="region" aria-label="Meeting notes" className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-ink">
+            <div tabIndex={0} role="region" aria-label={notes.length > 1 ? `Meeting notes ${index + 1}` : "Meeting notes"} className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-ink">
               {note.raw_text}
             </div>
           </Card>

@@ -377,7 +377,34 @@ describe("inserting into another workspace while signing as yourself", () => {
   });
 });
 
+describe("fields only the server sets", () => {
+  it.each([
+    ["a meeting's source", "insert into public.meetings (workspace_id, title, starts_at, source) values ($1, 'x', now(), 'google_calendar')"],
+    ["a meeting's calendar event", "insert into public.meetings (workspace_id, title, starts_at, external_event_id) values ($1, 'x', now(), 'evt')"],
+  ])("blocks a client setting %s", async (_name, sql) => {
+    await expect(db.asUser(b.userId, sql, [b.workspaceId])).rejects.toThrow(/permission denied/);
+  });
+
+  it("blocks a client writing an activity payload", async () => {
+    await expect(
+      db.asUser(b.userId, "insert into public.task_events (task_id, workspace_id, actor_id, type, payload) values ($1, $2, $3, 'edited', '{}')", [
+        b.tasks,
+        b.workspaceId,
+        b.userId,
+      ]),
+    ).rejects.toThrow(/permission denied/);
+  });
+});
+
 describe("duplicates", () => {
+  it("keeps one contact per name in a workspace, ignoring case", async () => {
+    const person = await signUpFresh("same-name@example.com");
+    await db.asUser(person.userId, "insert into public.contacts (workspace_id, display_name) values ($1, 'Sam')", [person.workspaceId]);
+    await expect(
+      db.asUser(person.userId, "insert into public.contacts (workspace_id, display_name) values ($1, 'sam')", [person.workspaceId]),
+    ).rejects.toThrow(/unique/);
+  });
+
   it("blocks two tasks from one suggestion", async () => {
     const person = await seed(await db.signUp("double-confirm@example.com"));
     const insert = "insert into public.tasks (workspace_id, title, suggestion_id) values ($1, 'x', $2)";

@@ -46,6 +46,10 @@ function matches(row, params) {
     const value = rest.join(".");
     if (operator === "eq" && String(row[column]) !== value) return false;
     if (operator === "is" && value === "null" && row[column] !== null && row[column] !== undefined) return false;
+    if (operator === "ilike") {
+      const wanted = decodeURIComponent(value).replace(/\\(.)/g, "$1").toLowerCase();
+      if (String(row[column]).toLowerCase() !== wanted) return false;
+    }
     if (operator === "in" && !value.slice(1, -1).split(",").map((v) => v.replace(/^"|"$/g, "")).includes(String(row[column]))) return false;
   }
   return true;

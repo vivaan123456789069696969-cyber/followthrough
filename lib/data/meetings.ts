@@ -1,4 +1,5 @@
 import "server-only";
+import { z } from "zod";
 import type { AppContext } from "./context";
 
 export async function listMeetings({ supabase, workspaceId }: AppContext) {
@@ -12,7 +13,9 @@ export async function listMeetings({ supabase, workspaceId }: AppContext) {
   return data;
 }
 
+/** Null for a missing meeting, including a malformed id, so the page shows "not found". */
 export async function getMeeting({ supabase }: AppContext, id: string) {
+  if (!z.uuid().safeParse(id).success) return null;
   const { data, error } = await supabase.from("meetings").select("id, title, starts_at, attendees").eq("id", id).maybeSingle();
   if (error) throw new Error("Could not load meeting");
   return data;

@@ -8,7 +8,7 @@ import { getAppContext, type AppContext } from "@/lib/data/context";
 import { isCalendarDate } from "@/lib/tasks/dates";
 import type { TaskEventType } from "@/lib/supabase/types";
 
-export type FormState = { error: string | null };
+export type FormState = { error: string | null; values?: Record<string, string> };
 
 const logFailure = (event: string, code?: string) => console.error(JSON.stringify({ event, code: code ?? "unknown" }));
 
@@ -38,42 +38,62 @@ async function recordEvent({ supabase, workspaceId, userId }: AppContext, taskId
 
 /** Reuses a contact with the same name, so "Sam" and "sam" stay one person. */
 async function contactIdFor({ supabase, workspaceId }: AppContext, name: string): Promise<string | null> {
-  const { data: existing } = await supabase.from("contacts").select("id, display_name").eq("workspace_id", workspaceId);
-  const match = existing?.find((contact) => contact.display_name.toLowerCase() === name.toLowerCase());
-  if (match) return match.id;
+  // An exact, case-insensitive match. Escape the pattern characters so a name can't act as a wildcard.
+  const pattern = name.replace(/[\\%_]/g, (character) => `\\${character}`);
+  const find = () =>
+    supabase.from("contacts").select("id").eq("workspace_id", workspaceId).ilike("display_name", pattern).limit(1).maybeSingle();
+
+  const existing = await find();
+  if (existing.data) return existing.data.id;
 
   const { data, error } = await supabase
     .from("contacts")
     .insert({ workspace_id: workspaceId, display_name: name })
     .select("id")
     .single();
-  if (error) {
-    logFailure("contact_create_failed", error.code);
-    return null;
+  if (!error) return data.id;
+
+  // Someone saved the same new name at the same moment. The database keeps one; use it.
+  if (error.code === "23505") {
+    const again = await find();
+    if (again.data) return again.data.id;
   }
-  return data.id;
+  logFailure("contact_create_failed", error.code);
+  return null;
 }
 
 export async function saveTask(_previous: FormState, formData: FormData): Promise<FormState> {
-  const parsed = taskSchema.safeParse({
-    id: formData.get("id") ?? "",
-    meeting_id: formData.get("meeting_id") ?? "",
-    title: formData.get("title") ?? "",
-    description: formData.get("description") ?? "",
-    owner_kind: formData.get("owner_kind"),
-    owner_name: formData.get("owner_name") ?? "",
-    due_date: formData.get("due_date") ?? "",
-  });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the details and try again." };
+  const values = {
+    title: String(formData.get("title") ?? ""),
+    description: String(formData.get("description") ?? ""),
+    owner_kind: String(formData.get("owner_kind") ?? "me"),
+    owner_name: String(formData.get("owner_name") ?? ""),
+    due_date: String(formData.get("due_date") ?? ""),
+  };
+  // Returned with every error, so the form keeps what was typed.
+  const fail = (error: string): FormState => ({ error, values });
+
+  const parsed = taskSchema.safeParse({ id: formData.get("id") ?? "", meeting_id: formData.get("meeting_id") ?? "", ...values });
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    // A bad meeting link is our problem, not the user's, so don't show a technical message.
+    return fail(issue?.path[0] === "meeting_id" ? "We couldn't find that meeting." : (issue?.message ?? "Check the details and try again."));
+  }
 
   const context = await getAppContext();
   const { supabase, workspaceId, userId } = context;
   const task = parsed.data;
 
+  if (task.id) {
+    // Make sure the task is the user's before creating anything for it.
+    const { data: own } = await supabase.from("tasks").select("id").eq("id", task.id).maybeSingle();
+    if (!own) return fail("We couldn't find this task.");
+  }
+
   let ownerContactId: string | null = null;
   if (task.owner_kind === "other") {
     ownerContactId = await contactIdFor(context, task.owner_name);
-    if (!ownerContactId) return { error: "We couldn't save the owner. Try again." };
+    if (!ownerContactId) return fail("We couldn't save the owner. Try again.");
   }
   const fields = {
     title: task.title,
@@ -87,7 +107,7 @@ export async function saveTask(_previous: FormState, formData: FormData): Promis
     const { data, error } = await supabase.from("tasks").update(fields).eq("id", task.id).select("id").maybeSingle();
     if (error || !data) {
       logFailure("task_update_failed", error?.code);
-      return { error: "We couldn't save this task. Try again." };
+      return fail("We couldn't save this task. Try again.");
     }
     await recordEvent(context, task.id, "edited");
   } else {
@@ -98,7 +118,7 @@ export async function saveTask(_previous: FormState, formData: FormData): Promis
       .single();
     if (error) {
       logFailure("task_create_failed", error.code);
-      return { error: "We couldn't save this task. Try again." };
+      return fail("We couldn't save this task. Try again.");
     }
     await recordEvent(context, data.id, "created");
   }
@@ -140,6 +160,7 @@ export async function snoozeTask(_previous: FormState, formData: FormData): Prom
     .from("tasks")
     .update({ snoozed_until: until.data })
     .eq("id", id.data)
+    .eq("status", "open")
     .select("id")
     .maybeSingle();
   if (error || !data) {

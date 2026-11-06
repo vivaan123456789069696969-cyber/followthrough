@@ -26,14 +26,14 @@ export default async function MyTasksPage({ searchParams }: { searchParams: Prom
   const context = await getAppContext();
   const params = await searchParams;
   const view = VIEWS.find((item) => item.key === params.view)?.key ?? "mine";
-  const tasks = await listTasks(context);
+  const tasks = await listTasks(context, { status: view === "done" ? "done" : "open" });
 
   const shown =
     view === "mine"
       ? myOpenTasks(tasks, context.userId)
       : view === "waiting"
         ? tasks.filter(isWaitingOnOthers).sort(byUrgency)
-        : tasks.filter((task) => task.status === "done").sort((a, b) => ((a.completed_at ?? "") < (b.completed_at ?? "") ? 1 : -1));
+        : tasks;
 
   const base = view === "mine" ? "/my-tasks" : `/my-tasks?view=${view}`;
   const withTask = (id: string) => `${base}${base.includes("?") ? "&" : "?"}task=${id}`;

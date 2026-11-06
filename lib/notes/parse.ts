@@ -20,7 +20,9 @@ export function formatFromFileName(name: string): FileNoteFormat | null {
 
 const TIMESTAMP_PATTERNS = [
   /\d{1,2}:\d{2}:\d{2}[.,]\d{3}\s*-->/, // VTT and SRT cues
-  /^\s*[[(]?\d{1,2}:\d{2}(:\d{2})?[\])]?\s/m, // "14:32 Maya: ..." at the start of a line
+  // "14:32 Maya: ..." at the start of a line. Only spaces and tabs, never newlines, so
+  // a note of blank lines can't make this scan for seconds.
+  /^[ \t]*[[(]?\d{1,2}:\d{2}(:\d{2})?[\])]?[ \t]/m,
 ];
 
 export function hasTimestamps(text: string): boolean {
@@ -36,10 +38,42 @@ export function validateNoteText(raw: string): ParsedNote {
   if (text.trim().length === 0) return { ok: false, message: "Add some notes first." };
 
   const limit = maxNoteChars();
-  if (charCount(text) > limit) {
+  // A string can't have fewer characters than half its UTF-16 length, so this is safe to
+  // reject before counting, which would copy a huge string.
+  if (text.length > 2 * limit || charCount(text) > limit) {
     return { ok: false, message: `Notes can be up to ${limit.toLocaleString("en-US")} characters.` };
   }
   return { ok: true, text, hasTimestamps: hasTimestamps(text) };
+}
+
+const MAX_DOCX_ENTRIES = 200;
+const MAX_DOCX_UNPACKED_BYTES = 20 * 1024 * 1024;
+
+/**
+ * A .docx is a zip. A small one can unpack to gigabytes and exhaust the server's memory,
+ * so check the sizes the zip declares before letting the Word reader unpack anything.
+ */
+export async function docxIsSafeToOpen(bytes: ArrayBuffer): Promise<boolean> {
+  try {
+    const { default: JSZip } = await import("jszip");
+    const zip = await JSZip.loadAsync(bytes);
+    const entries = Object.values(zip.files);
+    if (entries.length > MAX_DOCX_ENTRIES) return false;
+
+    let total = 0;
+    for (const entry of entries) {
+      if (entry.dir) continue;
+      // JSZip reads each entry's declared size from the zip's index without unpacking it.
+      const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
+      if (typeof declared !== "number") return false;
+      total += declared;
+      if (total > MAX_DOCX_UNPACKED_BYTES) return false;
+    }
+    return true;
+  } catch {
+    // Not a readable zip. The Word reader reports that with its own message.
+    return true;
+  }
 }
 
 export async function parseNoteFile(name: string, bytes: ArrayBuffer): Promise<ParsedNote & { format?: FileNoteFormat }> {
@@ -50,6 +84,9 @@ export async function parseNoteFile(name: string, bytes: ArrayBuffer): Promise<P
 
   let text: string;
   if (format === "docx") {
+    if (!(await docxIsSafeToOpen(bytes))) {
+      return { ok: false, message: "This Word file is too large to read." };
+    }
     try {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: Buffer.from(bytes) });

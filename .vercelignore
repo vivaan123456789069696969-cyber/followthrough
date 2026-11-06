@@ -1,9 +1,19 @@
-# Never upload local secrets or build output with a CLI deploy.
+# Never upload local secrets, tooling or build output with a CLI deploy.
 .env
 .env.*
 !.env.example
+.envrc
+supabase/signing_keys.json
+client_secret*.json
+*service-account*.json
+*.pem
+*.key
+.claude/
+.vercel/
 .next/
 node_modules/
+tests/
+playwright/
 coverage/
 test-results/
 playwright-report/

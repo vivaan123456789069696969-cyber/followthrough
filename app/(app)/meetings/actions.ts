@@ -8,7 +8,7 @@ import { parseNoteFile, validateNoteText, type ParsedNote } from "@/lib/notes/pa
 import { localToUtc } from "@/lib/tasks/dates";
 import type { NoteFormat } from "@/lib/supabase/types";
 
-export type MeetingFormState = { error: string | null };
+export type MeetingFormState = { error: string | null; values?: Record<string, string> };
 export type NotesFormState = { error: string | null; text: string };
 
 const logFailure = (event: string, code?: string) => console.error(JSON.stringify({ event, code: code ?? "unknown" }));
@@ -21,17 +21,20 @@ const meetingSchema = z.object({
 });
 
 export async function saveMeeting(_previous: MeetingFormState, formData: FormData): Promise<MeetingFormState> {
-  const parsed = meetingSchema.safeParse({
-    id: formData.get("id") ?? "",
-    title: formData.get("title") ?? "",
-    starts_at: formData.get("starts_at") ?? "",
-    attendees: formData.get("attendees") ?? "",
-  });
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the details and try again." };
+  const values = {
+    title: String(formData.get("title") ?? ""),
+    starts_at: String(formData.get("starts_at") ?? ""),
+    attendees: String(formData.get("attendees") ?? ""),
+  };
+  // Returned with every error, so the form keeps what was typed.
+  const fail = (error: string) => ({ error, values });
+
+  const parsed = meetingSchema.safeParse({ id: formData.get("id") ?? "", ...values });
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Check the details and try again.");
 
   const { supabase, workspaceId, timezone } = await getAppContext();
   const startsAt = localToUtc(parsed.data.starts_at, timezone);
-  if (!startsAt) return { error: "Enter a valid date and time." };
+  if (!startsAt) return fail("Enter a valid date and time.");
 
   const fields = {
     title: parsed.data.title,
@@ -48,7 +51,7 @@ export async function saveMeeting(_previous: MeetingFormState, formData: FormDat
     const { data, error } = await supabase.from("meetings").update(fields).eq("id", meetingId).select("id").maybeSingle();
     if (error || !data) {
       logFailure("meeting_update_failed", error?.code);
-      return { error: "We couldn't save this meeting. Try again." };
+      return fail("We couldn't save this meeting. Try again.");
     }
   } else {
     const { data, error } = await supabase
@@ -58,7 +61,7 @@ export async function saveMeeting(_previous: MeetingFormState, formData: FormDat
       .single();
     if (error) {
       logFailure("meeting_create_failed", error.code);
-      return { error: "We couldn't save this meeting. Try again." };
+      return fail("We couldn't save this meeting. Try again.");
     }
     meetingId = data.id;
   }
@@ -84,6 +87,9 @@ export async function addNotes(_previous: NotesFormState, formData: FormData): P
   const meetingId = z.uuid().safeParse(formData.get("meeting_id"));
   if (!meetingId.success) return { error: "We couldn't find this meeting.", text: pasted };
 
+  // Check the session before doing any expensive file work.
+  const { supabase, workspaceId, userId } = await getAppContext();
+
   const file = formData.get("file");
   // An empty file box still sends a nameless, zero-byte file, so only a non-empty one counts.
   const hasFile = file instanceof File && file.size > 0;
@@ -96,7 +102,6 @@ export async function addNotes(_previous: NotesFormState, formData: FormData): P
   }
   if (!parsed.ok) return { error: parsed.message, text: pasted };
 
-  const { supabase, workspaceId, userId } = await getAppContext();
   const { error } = await supabase.from("meeting_notes").insert({
     meeting_id: meetingId.data,
     workspace_id: workspaceId,

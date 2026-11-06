@@ -25,7 +25,7 @@ function StatTile({ label, value, href, tone, mark }: { label: string; value: nu
 export default async function MyDayPage({ searchParams }: { searchParams: Promise<{ task?: string }> }) {
   const context = await getAppContext();
   const { task: openTask } = await searchParams;
-  const tasks = await listTasks(context);
+  const tasks = await listTasks(context, { status: "open" });
 
   const stats = computeStats(tasks, context.userId, context.today);
   const { visible, total } = nextActions(tasks, context.userId, context.today);
@@ -61,13 +61,11 @@ export default async function MyDayPage({ searchParams }: { searchParams: Promis
                 <TaskRow key={task.id} task={task} today={context.today} href={`/my-day?task=${task.id}`} />
               ))}
             </ul>
-            {total > visible.length || total > 0 ? (
-              <p className="p-3">
-                <Link href="/my-tasks" className="font-medium text-brand underline">
-                  View all {total > visible.length ? `(${total})` : ""}
-                </Link>
-              </p>
-            ) : null}
+            <p className="p-3">
+              <Link href="/my-tasks" className="font-medium text-brand underline">
+                {total > visible.length ? `View all (${total})` : "View all"}
+              </Link>
+            </p>
           </Card>
         ) : (
           <EmptyState

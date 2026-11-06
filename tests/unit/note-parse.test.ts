@@ -52,6 +52,12 @@ describe("hasTimestamps", () => {
   it.each(["We met at 14:32 and talked.", "Budget ratio is 2:1 this year.", "No times here."])("finds none in %j", (text) => {
     expect(hasTimestamps(text)).toBe(false);
   });
+
+  it("stays fast on a note made of blank lines", () => {
+    const started = performance.now();
+    hasTimestamps(`x${"\n".repeat(99_999)}`);
+    expect(performance.now() - started).toBeLessThan(50);
+  });
 });
 
 describe("validateNoteText", () => {
@@ -97,6 +103,16 @@ describe("parseNoteFile", () => {
     expect(await parseNoteFile("notes.docx", await docx("Maya, send it"))).toMatchObject({ ok: true, format: "docx" });
     const parsed = await parseNoteFile("notes.docx", await docx("Maya, send it"));
     expect(parsed.ok && parsed.text.trim()).toBe("Maya, send it");
+  });
+
+  it("refuses a Word file that would unpack to far more than it weighs", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", "a".repeat(25 * 1024 * 1024));
+    const out = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    expect(out.byteLength).toBeLessThan(4 * 1024 * 1024);
+
+    const bomb = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer;
+    expect(await parseNoteFile("bomb.docx", bomb)).toEqual({ ok: false, message: "This Word file is too large to read." });
   });
 
   it("rejects a damaged Word file", async () => {
