@@ -93,7 +93,7 @@
 - Content-Security-Policy with a per-request nonce and `strict-dynamic`, so every page renders per request. Forms may post only to this app, its own Supabase project and Google.
 - Browser tests use the fake server as a stand-in Claude API. `npm run test:ai` is the only paid test.
 
-### Phase 4, setup and settings (2026-11-08)
+### Phase 4, setup and settings (2026-11-08, approved by the user the same day)
 - New accounts see "Choose your sources" once. Finishing or skipping both mark setup done; nothing on it is required.
 - Before Phase 5, the Google Calendar card explains what access it will ask for and says "Coming later". Choosing Google Tasks as the destination is saved, and tasks stay in the app until Google is connected. Nothing claims a connection.
 - `profiles.task_destination`: `app`, `google_tasks`, or null for "choose later".
