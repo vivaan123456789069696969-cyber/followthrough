@@ -77,7 +77,7 @@
 - Default Supabase emails use the code flow, so a link must be opened in the browser that asked for it. /auth/confirm (token hash, works in any browser) is built and tested, but Supabase only allows editing email templates once custom SMTP is set up.
 - When Resend SMTP is connected: set the Magic Link and Confirm signup templates to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`, on both projects, and change the "Open it in this same browser" note.
 
-### Phase 3, AI suggestions (2026-11-07)
+### Phase 3, AI suggestions (2026-11-07, approved by the user the same day)
 - Structured outputs (`output_config.format` with a Zod schema) instead of a `report_actions` tool. One call, no tool loop, and the schema is enforced by the API. Zod limits the API can't enforce (lengths, counts) are checked on the server.
 - No date or owner comes from the model alone. The model returns the exact due words; the server checks they are in the notes and turns them into a date itself, in the user's timezone, from the meeting's date. Anything unclear becomes an open question with the field left blank.
 - "We", "you", "the team" and similar never count as an owner.
