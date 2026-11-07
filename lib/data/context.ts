@@ -1,4 +1,5 @@
 import "server-only";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import { getProfile, requireSession } from "@/lib/auth/session";
 import { safeTimezone, todayInZone } from "@/lib/tasks/dates";
@@ -14,7 +15,9 @@ export const getAppContext = cache(async () => {
     .eq("user_id", session.userId)
     .limit(1)
     .maybeSingle();
-  if (error || !membership) throw new Error("Could not load workspace");
+  if (error) throw new Error("Could not load workspace");
+  // A valid token for an account that's gone: it was deleted, perhaps on another device.
+  if (!membership) redirect("/auth/ended");
 
   const timezone = safeTimezone(profile?.timezone);
 

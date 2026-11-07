@@ -15,8 +15,10 @@ function storeFor(token) {
     stores.set(token, {
       timezone: token.startsWith("good-utc") ? "UTC" : null,
       fullName: "Maya Chen",
+      // "good-new*" people haven't been through setup yet. Everyone else has.
+      settings: { onboarding_done: !token.startsWith("good-new"), note_retention_days: null, task_destination: null },
       workspaceId: randomUUID(),
-      tables: { contacts: [], meetings: [], meeting_notes: [], tasks: [], task_events: [], suggestions: [], ai_usage: [] },
+      tables: { contacts: [], meetings: [], meeting_notes: [], tasks: [], task_events: [], suggestions: [], ai_usage: [], reminder_prefs: [], integrations: [], task_syncs: [], reminder_log: [] },
     });
   }
   return stores.get(token);
@@ -93,6 +95,11 @@ createServer(async (request, response) => {
     storeFor(profileToken).fullName = fullName;
     return send(response, 200, { ok: true });
   }
+  if (url.pathname === "/test/state") {
+    const { token: stateToken } = await readBody(request);
+    const store = storeFor(stateToken);
+    return send(response, 200, { deleted: Boolean(store.deleted), settings: store.settings, fullName: store.fullName, timezone: store.timezone });
+  }
   if (url.pathname === "/test/seed") {
     const { token: seedToken, table, rows } = await readBody(request);
     const store = storeFor(seedToken);
@@ -166,16 +173,27 @@ createServer(async (request, response) => {
 
     if (table === "profiles" && request.method === "PATCH") {
       const body = await readBody(request);
-      savedTimezones.push(body.timezone);
-      store.timezone = body.timezone;
-      return send(response, 204);
+      if ("timezone" in body) {
+        savedTimezones.push(body.timezone);
+        store.timezone = body.timezone;
+      }
+      if ("full_name" in body) store.fullName = body.full_name;
+      for (const key of ["onboarding_done", "note_retention_days", "task_destination"]) {
+        if (key in body) store.settings[key] = body[key];
+      }
+      return send(response, 200, store.deleted ? [] : [{ id: USER_ID }]);
     }
     if (table === "profiles") {
-      if (token === "good-no-profile") return send(response, 200, []);
-      return send(response, 200, [{ full_name: store.fullName, timezone: store.timezone, onboarding_done: false }]);
+      if (token === "good-no-profile" || store.deleted) return send(response, 200, []);
+      return send(response, 200, [{ full_name: store.fullName, timezone: store.timezone, ...store.settings }]);
+    }
+    if (table === "rpc/delete_my_account") {
+      store.deleted = true;
+      for (const key of Object.keys(store.tables)) store.tables[key] = [];
+      return send(response, 200, null);
     }
     if (table === "workspaces") return send(response, 200, [{ name: "Personal" }]);
-    if (table === "workspace_members") return send(response, 200, [{ workspace_id: store.workspaceId }]);
+    if (table === "workspace_members") return send(response, 200, store.deleted ? [] : [{ workspace_id: store.workspaceId }]);
 
     // The two database functions, with the same checks as the real ones.
     if (table === "rpc/add_suggestions") {

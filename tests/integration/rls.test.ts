@@ -211,6 +211,7 @@ describe("privileges in the database catalog", () => {
     expect(rows.filter((row) => row.authed).map((row) => row.proname).sort()).toEqual([
       "add_suggestions",
       "confirm_suggestion",
+      "delete_my_account",
       "is_member",
       "is_workspace_owner",
       "reserve_ai_usage",
@@ -625,6 +626,12 @@ describe("account deletion", () => {
     await db.admin("delete from auth.users where id = $1", [person.userId]);
 
     for (const table of TABLES) {
+      if (table === "ai_usage") {
+        // Spend outlives the account so limits can't be reset, with the person removed.
+        const anonymous = await db.admin("select user_id, note_id from public.ai_usage where id = $1", [person[table]]);
+        expect(anonymous.rows, "ai_usage kept without the person").toEqual([{ user_id: null, note_id: null }]);
+        continue;
+      }
       const gone = await db.admin(`select id from public.${table} where id = $1`, [person[table]]);
       expect(gone.rows, `${table} left behind`).toEqual([]);
       const kept = await db.admin(`select id from public.${table} where id = $1`, [others[table]]);

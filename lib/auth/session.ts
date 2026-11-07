@@ -20,7 +20,7 @@ export type Session = Awaited<ReturnType<typeof requireSession>>;
 export async function getProfile({ supabase, userId }: Pick<Session, "supabase" | "userId">) {
   const { data, error } = await supabase
     .from("profiles")
-    .select("full_name, timezone, onboarding_done")
+    .select("full_name, timezone, onboarding_done, note_retention_days, task_destination")
     .eq("id", userId)
     .maybeSingle();
   if (error) throw new Error("Could not load profile");

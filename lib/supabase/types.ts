@@ -20,6 +20,7 @@ export type Database = {
           timezone: string | null;
           onboarding_done: boolean;
           note_retention_days: number | null;
+          task_destination: "app" | "google_tasks" | null;
         } & Timestamps,
         never,
         {
@@ -28,6 +29,7 @@ export type Database = {
           timezone?: string | null;
           onboarding_done?: boolean;
           note_retention_days?: number | null;
+          task_destination?: "app" | "google_tasks" | null;
         }
       >;
       workspaces: Table<
@@ -144,13 +146,14 @@ export type Database = {
         { title?: string; owner_name?: string | null; due_date?: string | null; status?: "pending" | "confirmed" | "dismissed" }
       >;
       ai_usage: Table<
-        { id: string; user_id: string; note_id: string | null; model: string; input_tokens: number; output_tokens: number; cost_usd: number } & Timestamps,
+        { id: string; user_id: string | null; note_id: string | null; model: string; input_tokens: number; output_tokens: number; cost_usd: number } & Timestamps,
         never,
         never
       >;
     };
     Views: Record<never, never>;
     Functions: {
+      delete_my_account: { Args: Record<string, never>; Returns: undefined };
       reserve_ai_usage: {
         Args: {
           p_note_id: string;

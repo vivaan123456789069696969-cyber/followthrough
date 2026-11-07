@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AppNav } from "@/components/app-nav";
 import { TimezoneSync } from "@/components/timezone-sync";
@@ -10,6 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function AppLayout({ children }: { children: ReactNode }) {
   // Cached for the request, so pages reuse this session and profile.
   const { profile } = await getAppContext();
+  // New accounts see setup once. Finishing or skipping it both count.
+  if (profile && !profile.onboarding_done) redirect("/setup");
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">

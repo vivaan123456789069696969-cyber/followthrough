@@ -93,6 +93,21 @@
 - Content-Security-Policy with a per-request nonce and `strict-dynamic`, so every page renders per request. Forms may post only to this app, its own Supabase project and Google.
 - Browser tests use the fake server as a stand-in Claude API. `npm run test:ai` is the only paid test.
 
+### Phase 4, setup and settings (2026-11-08)
+- New accounts see "Choose your sources" once. Finishing or skipping both mark setup done; nothing on it is required.
+- Before Phase 5, the Google Calendar card explains what access it will ask for and says "Coming later". Choosing Google Tasks as the destination is saved, and tasks stay in the app until Google is connected. Nothing claims a connection.
+- `profiles.task_destination`: `app`, `google_tasks`, or null for "choose later".
+- Note auto-delete choices: keep, 30, 90, 180 or 365 days (the database allows 1 to 3650). Deleted daily at 03:17 UTC by pg_cron, using each note creator's setting. Tasks keep their quote.
+- Delete account: a database function removes the sign-in record, and cascades remove the personal workspace and everything in it. No server secret key is needed. The user types "delete" first. Phase 5 must revoke Google access before this runs.
+- Export: one JSON file of everything the user can read, through their own session, so row-level security applies. Secret columns are never selected.
+- From the Phase 4 reviews:
+  - AI usage rows are kept when an account is deleted, with the person and note removed, so deleting and signing up again doesn't reset the shared spending total. A returning person does get a fresh personal limit; tying limits to a hashed email is left for later.
+  - Deleting an account is refused while the person created a shared workspace others are in. Auto-delete applies to personal workspaces only. Both need revisiting before team features, as does what the export includes from shared workspaces.
+  - A device whose account no longer exists is signed out at /auth/ended, which only acts when the account really is gone.
+  - Accepted for now: deleting needs only the typed word, not a fresh sign-in. Asking for a new sign-in link needs custom SMTP first (Supabase's built-in mailer allows about 2 emails an hour). Revisit with Resend.
+  - Accepted for now: no rate limit on export; the deletion notice comes from a query parameter and shows only fixed text.
+- Still open from the Phase 1 review: CAPTCHA on sign-in. It needs a CAPTCHA provider account the user sets up.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.
