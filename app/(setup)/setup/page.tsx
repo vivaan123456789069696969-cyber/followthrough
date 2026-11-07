@@ -5,6 +5,7 @@ import { TimezoneSync } from "@/components/timezone-sync";
 import { SourceCards } from "@/components/sources";
 import { Card } from "@/components/ui";
 import { getAppContext } from "@/lib/data/context";
+import { googleReady } from "@/lib/google/schedule";
 
 export const metadata: Metadata = { title: "Choose your sources · FollowThrough" };
 
@@ -19,6 +20,7 @@ const AI_NOTICE =
 
 export default async function SetupPage() {
   const { profile } = await getAppContext();
+  const googleAvailable = googleReady();
   const firstName = profile?.full_name?.trim().split(/\s+/)[0];
 
   return (
@@ -43,7 +45,7 @@ export default async function SetupPage() {
         <h2 id="sources-heading" className="text-xl font-semibold text-ink">
           Where notes come from
         </h2>
-        <SourceCards />
+        <SourceCards googleAvailable={googleAvailable} />
         <p className="text-ink">{AI_NOTICE}</p>
       </section>
 
@@ -52,7 +54,7 @@ export default async function SetupPage() {
           Keep work here or sync elsewhere
         </h2>
         <Card className="p-5">
-          <SetupForm current={profile?.task_destination ?? null} />
+          <SetupForm current={profile?.task_destination ?? null} googleAvailable={googleAvailable} />
         </Card>
       </section>
 

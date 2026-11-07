@@ -7,6 +7,7 @@ import { aiConfigured, aiModel, extractActions, globalCapUsd, hourlyLimit, month
 import { checkModelActions } from "@/lib/ai/postprocess";
 import { costUsd, worstCaseCostUsd } from "@/lib/ai/prompt";
 import { getAppContext } from "@/lib/data/context";
+import { syncAfterResponse } from "@/lib/google/schedule";
 import { getMeeting } from "@/lib/data/meetings";
 import { getNote, looksLikeMe } from "@/lib/data/suggestions";
 import { isCalendarDate, longDate, todayInZone } from "@/lib/tasks/dates";
@@ -125,7 +126,7 @@ export async function confirmSuggestion(_previous: ActionState, formData: FormDa
   if (parsed.data.owner_kind === "other" && !parsed.data.owner_name) return { error: "Add the owner's name." };
 
   const { supabase } = await getAppContext();
-  const { error } = await supabase.rpc("confirm_suggestion", {
+  const { data: taskId, error } = await supabase.rpc("confirm_suggestion", {
     p_suggestion_id: parsed.data.suggestion_id,
     p_title: parsed.data.title,
     p_owner_kind: parsed.data.owner_kind,
@@ -136,6 +137,7 @@ export async function confirmSuggestion(_previous: ActionState, formData: FormDa
     logFailure("confirm_suggestion_failed", error.code);
     return { error: "We couldn't confirm this task. Try again." };
   }
+  if (taskId) syncAfterResponse([taskId]);
   revalidatePath("/", "layout");
   return { error: null };
 }
@@ -184,13 +186,14 @@ export async function confirmAllComplete(_previous: ActionState, formData: FormD
   }
 
   let failed = parsed.data.ids.length - data.length;
+  const confirmed: string[] = [];
   for (const suggestion of data) {
     if (!suggestion.owner_name || !suggestion.due_date || suggestion.open_questions.length) {
       failed += 1;
       continue;
     }
     const mine = looksLikeMe(suggestion.owner_name, context.profile?.full_name);
-    const { error: confirmError } = await context.supabase.rpc("confirm_suggestion", {
+    const { data: taskId, error: confirmError } = await context.supabase.rpc("confirm_suggestion", {
       p_suggestion_id: suggestion.id,
       p_title: suggestion.title,
       p_owner_kind: mine ? "me" : "other",
@@ -200,8 +203,11 @@ export async function confirmAllComplete(_previous: ActionState, formData: FormD
     if (confirmError) {
       logFailure("bulk_confirm_failed", confirmError.code);
       failed += 1;
+    } else if (taskId) {
+      confirmed.push(taskId);
     }
   }
+  syncAfterResponse(confirmed);
   revalidatePath("/", "layout");
   if (failed) {
     return { error: failed === 1 ? "1 task couldn't be confirmed. Check it on its own." : `${failed} tasks couldn't be confirmed. Check them one at a time.` };

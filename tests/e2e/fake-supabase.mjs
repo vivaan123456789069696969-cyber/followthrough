@@ -3,16 +3,26 @@
 // endpoint checks signatures: only "good-*" tokens are valid. Each token gets its own
 // data, as if it were its own workspace. RLS itself is tested on real Postgres in
 // tests/integration/rls.test.ts.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 
 const USER_ID = "00000000-0000-4000-8000-000000000001";
+const ADMIN_KEY = "sb_secret_e2e_placeholder";
 const savedTimezones = [];
 const stores = new Map();
+
+/** "good-gg<32 hex>" tokens are people with their own user id, for the Google tests. Everyone else shares USER_ID. */
+export function userIdFor(token) {
+  const match = /^good-gg([0-9a-f]{32})$/.exec(token);
+  if (!match) return USER_ID;
+  const h = match[1];
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-8${h.slice(17, 20)}-${h.slice(20, 32)}`;
+}
 
 function storeFor(token) {
   if (!stores.has(token)) {
     stores.set(token, {
+      userId: userIdFor(token),
       timezone: token.startsWith("good-utc") ? "UTC" : null,
       fullName: "Maya Chen",
       // "good-new*" people haven't been through setup yet. Everyone else has.
@@ -41,9 +51,24 @@ async function readBody(request) {
 
 const RESERVED = new Set(["select", "order", "limit", "offset", "columns"]);
 
+/** PostgREST's or=(col.op.value,col.op.value): true if any part holds. */
+function matchesAny(row, list) {
+  return list
+    .replace(/^\(|\)$/g, "")
+    .split(",")
+    .some((part) => {
+      const [column, ...rest] = part.split(".");
+      return matches(row, new URLSearchParams([[column, rest.join(".")]]));
+    });
+}
+
 function matches(row, params) {
   for (const [column, condition] of params) {
     if (RESERVED.has(column)) continue;
+    if (column === "or") {
+      if (!matchesAny(row, condition)) return false;
+      continue;
+    }
     const [operator, ...rest] = condition.split(".");
     const value = rest.join(".");
     if (operator === "eq" && String(row[column]) !== value) return false;
@@ -53,6 +78,11 @@ function matches(row, params) {
       if (String(row[column]).toLowerCase() !== wanted) return false;
     }
     if (operator === "in" && !value.slice(1, -1).split(",").map((v) => v.replace(/^"|"$/g, "")).includes(String(row[column]))) return false;
+    if (operator === "neq" && String(row[column]) === value) return false;
+    if (operator === "lt" && !(Number(row[column]) < Number(value))) return false;
+    // Timestamps compare as text, which works for ISO format.
+    if (operator === "lte" && !(row[column] != null && String(row[column]) <= value)) return false;
+    if (operator === "gt" && !(row[column] != null && String(row[column]) > value)) return false;
   }
   return true;
 }
@@ -76,11 +106,280 @@ function reply(request, response, status, rows) {
 const DEFAULTS = {
   tasks: { meeting_id: null, suggestion_id: null, description: null, owner_user_id: null, owner_contact_id: null, due_date: null, snoozed_until: null, status: "open", source_quote: null, completed_at: null },
   meetings: { attendees: [], external_event_id: null },
+  // The real table's defaults, so the app sees the same shape.
+  task_syncs: { external_id: null, container_id: null, state: "pending", last_error: null, last_synced_at: null, attempts: 0, next_attempt_at: null },
 };
 
 function addRow(table, row) {
   const now = new Date().toISOString();
   return { id: randomUUID(), created_at: now, updated_at: now, ...DEFAULTS[table], ...row };
+}
+
+// ---------------------------------------------------------------------------
+// Admin access (the secret key): reads and writes across every account.
+// ---------------------------------------------------------------------------
+
+async function adminRest(request, response, url) {
+  const table = url.pathname.slice("/rest/v1/".length);
+  const params = url.searchParams;
+  const live = [...stores.values()].filter((store) => !store.deleted);
+
+  if (table === "profiles") {
+    const id = (params.get("id") ?? "").replace(/^eq\./, "");
+    const store = live.find((candidate) => candidate.userId === id);
+    return reply(request, response, 200, store ? [{ id: store.userId, full_name: store.fullName, timezone: store.timezone, ...store.settings }] : []);
+  }
+
+  const tablesOf = (store) => store.tables[table] ?? [];
+  if (request.method === "GET") {
+    let found = ordered(live.flatMap((store) => tablesOf(store).filter((row) => matches(row, params))), params);
+    const limit = Number(params.get("limit"));
+    if (limit) found = found.slice(0, limit);
+    return reply(request, response, 200, found);
+  }
+  if (request.method === "POST") {
+    const body = await readBody(request);
+    const added = [];
+    for (const row of Array.isArray(body) ? body : [body]) {
+      const store = live.find((candidate) => candidate.workspaceId === row.workspace_id);
+      if (!store) return send(response, 409, { code: "23503", message: "no such workspace" });
+      const rows = tablesOf(store);
+      if (table === "meetings" && row.external_event_id && rows.some((meeting) => meeting.external_event_id === row.external_event_id)) {
+        return send(response, 409, { code: "23505", message: "duplicate key value violates unique constraint" });
+      }
+      const created = addRow(table, row);
+      rows.push(created);
+      added.push(created);
+    }
+    return (request.headers.prefer ?? "").includes("return=representation") ? reply(request, response, 201, added) : send(response, 201);
+  }
+  if (request.method === "PATCH") {
+    const body = await readBody(request);
+    const found = live.flatMap((store) => tablesOf(store).filter((row) => matches(row, params)));
+    found.forEach((row) => Object.assign(row, body, { updated_at: new Date().toISOString() }));
+    return (request.headers.prefer ?? "").includes("return=representation") ? reply(request, response, 200, found) : send(response, 204);
+  }
+  if (request.method === "DELETE") {
+    for (const store of live) if (store.tables[table]) store.tables[table] = store.tables[table].filter((row) => !matches(row, params));
+    return send(response, 204);
+  }
+  return send(response, 405, { message: "method not allowed" });
+}
+
+// ---------------------------------------------------------------------------
+// Google, for the Phase 5 tests: sign-in with PKCE, Calendar and Tasks.
+// Each browser context gets its own Google account through a cookie on this origin.
+// ---------------------------------------------------------------------------
+
+const googleAccounts = new Map();
+const googleCodes = new Map();
+const googleTokens = new Map(); // access or refresh token -> { account, kind }
+// Failure switches, per Google account, so tests running at the same time don't share them.
+const googleControls = new Map();
+const controlFor = (accountId) => {
+  if (!googleControls.has(accountId)) googleControls.set(accountId, { deny: false, untick: false, failWrites: 0, revokeAll: false });
+  return googleControls.get(accountId);
+};
+
+function cookieOf(request, name) {
+  return (request.headers.cookie ?? "").split(/;\s*/).find((part) => part.startsWith(`${name}=`))?.slice(name.length + 1);
+}
+
+function googleAccount(id) {
+  if (!googleAccounts.has(id)) {
+    const soon = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    googleAccounts.set(id, {
+      id,
+      scopes: new Set(),
+      events: [
+        {
+          id: "evt-launch",
+          summary: "Launch planning",
+          status: "confirmed",
+          start: { dateTime: soon.toISOString() },
+          attendees: [{ displayName: "Maya Chen", self: true }, { displayName: "Sam Lee" }, { email: "priya@example.com" }, { email: "room-4@example.com", resource: true }],
+        },
+        { id: "evt-cancelled", summary: "Cancelled sync", status: "cancelled", start: { dateTime: soon.toISOString() } },
+        { id: "evt-offsite", summary: "Team offsite", status: "confirmed", start: { date: "2030-11-10" }, end: { date: "2030-11-11" } },
+      ],
+      calendars: new Map(),
+      lists: new Map([["list-default", { title: "My Tasks", tasks: new Map() }]]),
+    });
+  }
+  return googleAccounts.get(id);
+}
+
+function issueTokens(account) {
+  const access = `ya29.${randomUUID()}`;
+  const refresh = `1//${randomUUID()}`;
+  googleTokens.set(access, { account, kind: "access" });
+  googleTokens.set(refresh, { account, kind: "refresh" });
+  return { access, refresh };
+}
+
+async function google(request, response, url) {
+  const path = url.pathname;
+
+  // Test controls and inspection.
+  if (path === "/test/google") {
+    const { account, ...settings } = await readBody(request);
+    return send(response, 200, Object.assign(controlFor(account), settings));
+  }
+  if (path === "/test/google-account") {
+    const account = googleAccounts.get(url.searchParams.get("id"));
+    if (!account) return send(response, 404, {});
+    return send(response, 200, {
+      scopes: [...account.scopes],
+      calendars: [...account.calendars].map(([id, calendar]) => ({ id, summary: calendar.summary, events: [...calendar.events.values()] })),
+      lists: [...account.lists].map(([id, list]) => ({ id, title: list.title, tasks: [...list.tasks.values()] })),
+      revoked: Boolean(account.revoked),
+    });
+  }
+
+  if (path === "/google/authorize") {
+    const params = url.searchParams;
+    let accountId = cookieOf(request, "gacct");
+    const headers = {};
+    if (!accountId) {
+      accountId = randomUUID();
+      headers["set-cookie"] = `gacct=${accountId}; Path=/; HttpOnly`;
+    }
+    const back = new URL(params.get("redirect_uri"));
+    back.searchParams.set("state", params.get("state"));
+    const control = controlFor(accountId);
+    if (control.deny) {
+      back.searchParams.set("error", "access_denied");
+    } else {
+      if (params.get("client_id") !== "e2e-client" || params.get("code_challenge_method") !== "S256") return send(response, 400, { error: "invalid_request" });
+      const account = googleAccount(accountId);
+      account.revoked = false;
+      const requested = params.get("scope").split(" ");
+      const granted = control.untick ? [] : requested;
+      const code = randomUUID();
+      googleCodes.set(code, { account, granted, challenge: params.get("code_challenge"), redirectUri: params.get("redirect_uri") });
+      back.searchParams.set("code", code);
+    }
+    response.writeHead(302, { location: back.toString(), ...headers });
+    return response.end();
+  }
+
+  if (path === "/google/token") {
+    let text = "";
+    for await (const chunk of request) text += chunk;
+    const form = new URLSearchParams(text);
+    if (form.get("client_secret") !== "e2e-secret") return send(response, 401, { error: "invalid_client" });
+    if (form.get("grant_type") === "authorization_code") {
+      const grant = googleCodes.get(form.get("code"));
+      googleCodes.delete(form.get("code"));
+      const challenge = createHash("sha256").update(form.get("code_verifier") ?? "").digest("base64url");
+      if (!grant || grant.challenge !== challenge || grant.redirectUri !== form.get("redirect_uri")) return send(response, 400, { error: "invalid_grant" });
+      grant.granted.forEach((scope) => grant.account.scopes.add(scope));
+      const { access, refresh } = issueTokens(grant.account);
+      // With include_granted_scopes, Google reports everything granted so far.
+      return send(response, 200, { access_token: access, refresh_token: refresh, expires_in: 3600, scope: [...grant.account.scopes].join(" "), token_type: "Bearer" });
+    }
+    const known = googleTokens.get(form.get("refresh_token"));
+    if (!known || known.kind !== "refresh" || known.account.revoked || controlFor(known.account.id).revokeAll) return send(response, 400, { error: "invalid_grant" });
+    const access = `ya29.${randomUUID()}`;
+    googleTokens.set(access, { account: known.account, kind: "access" });
+    return send(response, 200, { access_token: access, expires_in: 3600, scope: [...known.account.scopes].join(" "), token_type: "Bearer" });
+  }
+
+  if (path === "/google/revoke") {
+    let text = "";
+    for await (const chunk of request) text += chunk;
+    const known = googleTokens.get(new URLSearchParams(text).get("token"));
+    if (!known) return send(response, 400, { error: "invalid_token" });
+    known.account.revoked = true;
+    known.account.scopes.clear();
+    return send(response, 200, {});
+  }
+
+  if (!path.startsWith("/google/api/")) return send(response, 404, {});
+  const bearer = (request.headers.authorization ?? "").replace(/^Bearer /, "");
+  const known = googleTokens.get(bearer);
+  if (!known || known.kind !== "access" || known.account.revoked || controlFor(known.account.id).revokeAll) {
+    return send(response, 401, { error: { status: "UNAUTHENTICATED", errors: [{ reason: "authError" }] } });
+  }
+  const account = known.account;
+  const has = (scope) => account.scopes.has(`https://www.googleapis.com/auth/${scope}`);
+  const api = path.slice("/google/api".length);
+  const write = request.method !== "GET";
+  const control = controlFor(account.id);
+  if (write && control.failWrites > 0) {
+    control.failWrites -= 1;
+    return send(response, 503, { error: { status: "UNAVAILABLE", errors: [{ reason: "backendError" }] } });
+  }
+  const body = write && request.method !== "DELETE" ? await readBody(request) : {};
+  let match;
+
+  // Calendar: the person's own events, read only.
+  if ((match = /^\/calendar\/v3\/calendars\/primary\/events(?:\/([^/]+))?$/.exec(api))) {
+    if (!has("calendar.events.owned.readonly")) return send(response, 403, { error: { errors: [{ reason: "insufficientPermissions" }] } });
+    if (match[1]) {
+      const event = account.events.find((item) => item.id === decodeURIComponent(match[1]));
+      return event ? send(response, 200, event) : send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
+    }
+    return send(response, 200, { items: account.events });
+  }
+
+  // Calendar: calendars this app made, and their events.
+  if (api === "/calendar/v3/calendars" && request.method === "POST") {
+    if (!has("calendar.app.created")) return send(response, 403, { error: { errors: [{ reason: "insufficientPermissions" }] } });
+    const id = `cal-${randomUUID()}`;
+    account.calendars.set(id, { summary: body.summary, events: new Map() });
+    return send(response, 200, { id, summary: body.summary });
+  }
+  if ((match = /^\/calendar\/v3\/calendars\/([^/]+)\/events(?:\/([^/]+))?$/.exec(api))) {
+    const calendar = account.calendars.get(decodeURIComponent(match[1]));
+    if (!has("calendar.app.created") || !calendar) return send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
+    const id = match[2] && decodeURIComponent(match[2]);
+    if (request.method === "GET") {
+      const wanted = url.searchParams.get("privateExtendedProperty")?.split("=")[1];
+      return send(response, 200, { items: [...calendar.events.values()].filter((event) => event.extendedProperties?.private?.followthrough_task_id === wanted) });
+    }
+    if (request.method === "POST") {
+      // Like Google: an id may be chosen, and choosing one that exists is refused.
+      if (body.id && calendar.events.has(body.id)) return send(response, 409, { error: { errors: [{ reason: "duplicate" }] } });
+      const event = { ...body, id: body.id ?? `ev-${randomUUID()}` };
+      calendar.events.set(event.id, event);
+      return send(response, 200, event);
+    }
+    if (!calendar.events.has(id)) return send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
+    if (request.method === "PATCH") {
+      const event = Object.assign(calendar.events.get(id), body);
+      return send(response, 200, event);
+    }
+    calendar.events.delete(id);
+    response.writeHead(204);
+    return response.end();
+  }
+
+  // Tasks.
+  if (api.startsWith("/tasks/v1/") && !has("tasks")) return send(response, 403, { error: { errors: [{ reason: "insufficientPermissions" }] } });
+  if (api === "/tasks/v1/users/@me/lists") {
+    if (request.method === "POST") {
+      const id = `list-${randomUUID()}`;
+      account.lists.set(id, { title: body.title, tasks: new Map() });
+      return send(response, 200, { id, title: body.title });
+    }
+    return send(response, 200, { items: [...account.lists].map(([id, list]) => ({ id, title: list.title })) });
+  }
+  if ((match = /^\/tasks\/v1\/lists\/([^/]+)\/tasks(?:\/([^/]+))?$/.exec(api))) {
+    const list = account.lists.get(decodeURIComponent(match[1]));
+    if (!list) return send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
+    const id = match[2] && decodeURIComponent(match[2]);
+    if (request.method === "GET") return send(response, 200, { items: [...list.tasks.values()] });
+    if (request.method === "POST") {
+      const task = { ...body, id: `task-${randomUUID()}` };
+      list.tasks.set(task.id, task);
+      return send(response, 200, task);
+    }
+    if (!list.tasks.has(id)) return send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
+    return send(response, 200, Object.assign(list.tasks.get(id), body));
+  }
+
+  return send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
 }
 
 createServer(async (request, response) => {
@@ -110,8 +409,13 @@ createServer(async (request, response) => {
 
   if (url.pathname === "/auth/v1/user") {
     if (!valid) return send(response, 403, { code: 403, error_code: "bad_jwt", msg: "invalid JWT" });
-    return send(response, 200, { id: USER_ID, aud: "authenticated", role: "authenticated", email: "maya@example.com" });
+    return send(response, 200, { id: userIdFor(token), aud: "authenticated", role: "authenticated", email: "maya@example.com" });
   }
+
+  if (url.pathname.startsWith("/google/") || url.pathname.startsWith("/test/google")) return google(request, response, url);
+
+  // The server's admin client: no session, sees every account, like Supabase's secret key.
+  if (url.pathname.startsWith("/rest/v1/") && request.headers.apikey === ADMIN_KEY) return adminRest(request, response, url);
 
   if (url.pathname === "/auth/v1/logout") return send(response, 204);
 
@@ -181,7 +485,7 @@ createServer(async (request, response) => {
       for (const key of ["onboarding_done", "note_retention_days", "task_destination"]) {
         if (key in body) store.settings[key] = body[key];
       }
-      return send(response, 200, store.deleted ? [] : [{ id: USER_ID }]);
+      return send(response, 200, store.deleted ? [] : [{ id: store.userId }]);
     }
     if (table === "profiles") {
       if (token === "good-no-profile" || store.deleted) return send(response, 200, []);
@@ -249,10 +553,11 @@ createServer(async (request, response) => {
         meeting_id: note?.meeting_id ?? null,
         suggestion_id: suggestion.id,
         title: body.p_title,
-        owner_user_id: body.p_owner_kind === "me" ? USER_ID : null,
+        owner_user_id: body.p_owner_kind === "me" ? store.userId : null,
         owner_contact_id: contactId,
         due_date: body.p_due_date,
         source_quote: suggestion.source_quote,
+        created_by: store.userId,
       });
       store.tables.tasks.push(task);
       Object.assign(suggestion, { status: "confirmed" });

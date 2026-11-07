@@ -7,7 +7,9 @@ type Table<Row, Insert, Update> = { Row: Row; Insert: Insert; Update: Update; Re
 type Timestamps = { created_at: string; updated_at: string };
 export type TaskStatus = "open" | "done" | "dismissed";
 export type TaskEventType = "created" | "edited" | "done" | "reopened" | "snoozed" | "synced" | "reminded";
-export type NoteFormat = "paste" | "txt" | "md" | "vtt" | "srt" | "docx" | "wispr_import";
+export type SyncProvider = "google_tasks" | "google_calendar";
+export type SyncState = "pending" | "ok" | "failed";
+export type NoteFormat ="paste" | "txt" | "md" | "vtt" | "srt" | "docx" | "wispr_import";
 
 export type Database = {
   public: {
@@ -57,7 +59,15 @@ export type Database = {
           external_event_id: string | null;
           attendees: string[];
         } & Timestamps,
-        { workspace_id: string; title: string; starts_at: string; attendees?: string[] },
+        {
+          workspace_id: string;
+          title: string;
+          starts_at: string;
+          attendees?: string[];
+          // Only the server's admin client can set these; users' inserts are refused.
+          source?: "manual" | "google_calendar" | "wispr_import";
+          external_event_id?: string | null;
+        },
         { title?: string; starts_at?: string; attendees?: string[] }
       >;
       meeting_notes: Table<
@@ -149,6 +159,67 @@ export type Database = {
         { id: string; user_id: string | null; note_id: string | null; model: string; input_tokens: number; output_tokens: number; cost_usd: number } & Timestamps,
         never,
         never
+      >;
+      integrations: Table<
+        {
+          id: string;
+          workspace_id: string;
+          user_id: string;
+          provider: "google";
+          scopes: string[];
+          access_token_enc: string | null;
+          refresh_token_enc: string | null;
+          expires_at: string | null;
+          status: "active" | "needs_reconnect" | "revoked";
+          calendar_id: string | null;
+          tasklist_id: string | null;
+        } & Timestamps,
+        {
+          workspace_id: string;
+          user_id: string;
+          provider: "google";
+          scopes?: string[];
+          access_token_enc?: string | null;
+          refresh_token_enc?: string | null;
+          expires_at?: string | null;
+          status?: "active" | "needs_reconnect" | "revoked";
+          calendar_id?: string | null;
+          tasklist_id?: string | null;
+        },
+        {
+          scopes?: string[];
+          access_token_enc?: string | null;
+          refresh_token_enc?: string | null;
+          expires_at?: string | null;
+          status?: "active" | "needs_reconnect" | "revoked";
+          calendar_id?: string | null;
+          tasklist_id?: string | null;
+        }
+      >;
+      task_syncs: Table<
+        {
+          id: string;
+          task_id: string;
+          workspace_id: string;
+          provider: SyncProvider;
+          external_id: string | null;
+          container_id: string | null;
+          state: SyncState;
+          last_error: string | null;
+          last_synced_at: string | null;
+          attempts: number;
+          next_attempt_at: string | null;
+        } & Timestamps,
+        { task_id: string; workspace_id: string; provider: SyncProvider; state?: SyncState; next_attempt_at?: string | null },
+        {
+          external_id?: string | null;
+          container_id?: string | null;
+          state?: SyncState;
+          last_error?: string | null;
+          last_synced_at?: string | null;
+          attempts?: number;
+          next_attempt_at?: string | null;
+        }
       >;
     };
     Views: Record<never, never>;

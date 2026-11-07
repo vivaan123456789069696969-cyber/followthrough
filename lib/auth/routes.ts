@@ -2,7 +2,8 @@ export const HOME_AFTER_SIGN_IN = "/my-day";
 const SIGN_IN = "/sign-in";
 
 /** Everything else needs a session, so a new page is private unless it's added here. */
-const PUBLIC_PATHS = new Set(["/", SIGN_IN, "/auth/callback", "/auth/confirm"]);
+// Scheduled jobs have no session; each checks its own secret instead.
+const PUBLIC_PATHS = new Set(["/", SIGN_IN, "/auth/callback", "/auth/confirm", "/api/cron/google-sync"]);
 
 /**
  * Only same-site paths are allowed after sign-in. Anything else could send someone

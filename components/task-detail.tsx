@@ -5,6 +5,7 @@ import { getTask, listContacts } from "@/lib/data/tasks";
 import { addDays, dueLabel, longDate, meetingTime } from "@/lib/tasks/dates";
 import { secondaryButton } from "./button-styles";
 import { Drawer } from "./drawer";
+import { RetrySync } from "./google-forms";
 import { SnoozeForm } from "./snooze-form";
 import { SubmitButton } from "./submit-button";
 import { TaskForm } from "./task-form";
@@ -19,6 +20,8 @@ const EVENT_LABELS: Record<string, string> = {
   synced: "Synced",
   reminded: "Reminder sent",
 };
+
+const SYNC_NAMES: Record<string, string> = { google_tasks: "Google Tasks", google_calendar: "Due date in Calendar" };
 
 export async function TaskDetail({ context, id, closeHref }: { context: AppContext; id: string; closeHref: string }) {
   const [task, contacts] = await Promise.all([getTask(context, id), listContacts(context)]);
@@ -104,6 +107,35 @@ export async function TaskDetail({ context, id, closeHref }: { context: AppConte
             <TaskForm returnTo={closeHref} contacts={contacts} task={task} />
           </div>
         </details>
+
+        {task.syncs.length ? (
+          <section aria-labelledby="sync-heading" className="flex flex-col gap-2">
+            <h3 id="sync-heading" className="font-semibold">
+              Google
+            </h3>
+            <ul className="flex flex-col gap-3">
+              {task.syncs.map((sync) => (
+                <li key={sync.provider} className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span>{SYNC_NAMES[sync.provider]}</span>
+                    {sync.state === "ok" ? (
+                      <Badge tone="lime">Synced</Badge>
+                    ) : sync.state === "pending" ? (
+                      <Badge tone="plain">Waiting to sync</Badge>
+                    ) : (
+                      <Badge tone="warm">Not synced</Badge>
+                    )}
+                  </div>
+                  {sync.state === "failed" ? (
+                    <p className="text-sm text-ink-muted">{sync.last_error ?? "This couldn't be sent to Google."}</p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            {/* One Retry for the whole task: it tries everything that didn't go through. */}
+            {task.syncs.some((sync) => sync.state === "failed") ? <RetrySync taskId={task.id} /> : null}
+          </section>
+        ) : null}
 
         <section aria-labelledby="activity-heading">
           <h3 id="activity-heading" className="mb-2 font-semibold">

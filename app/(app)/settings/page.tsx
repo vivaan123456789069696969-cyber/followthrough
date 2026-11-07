@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import { secondaryButton } from "@/components/button-styles";
 import { DeleteAccount } from "@/components/delete-account";
 import { DestinationFields } from "@/components/destination-fields";
+import { GoogleSection } from "@/components/google-section";
+import { googleReady } from "@/lib/google/schedule";
 import { SettingsForm } from "@/components/settings-form";
 import { SourceCards } from "@/components/sources";
 import { Card, inputClass, labelClass } from "@/components/ui";
@@ -39,8 +41,10 @@ function timezones(current: string): string[] {
   return all.includes(current) ? all : [current, ...all];
 }
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
   const context = await getAppContext();
+  const { google } = await searchParams;
+  const googleAvailable = googleReady();
   const { profile, supabase, userId } = context;
 
   const monthStart = new Date();
@@ -91,13 +95,17 @@ export default async function SettingsPage() {
       </Section>
 
       <Section id="sources-heading" title="Sources">
-        <SourceCards />
+        <SourceCards googleAvailable={googleAvailable} />
+      </Section>
+
+      <Section id="google-heading" title="Google">
+        <GoogleSection context={context} status={google} />
       </Section>
 
       <Section id="destination-heading" title="Task destination">
         <Card className="p-5">
           <SettingsForm action={saveDestination}>
-            <DestinationFields current={profile?.task_destination ?? null} idPrefix="settings-destination" />
+            <DestinationFields current={profile?.task_destination ?? null} idPrefix="settings-destination" googleAvailable={googleAvailable} />
           </SettingsForm>
         </Card>
       </Section>

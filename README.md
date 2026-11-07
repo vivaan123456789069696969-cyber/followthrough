@@ -104,7 +104,19 @@ After migrating the dev and test project, run `npm run test:live` to check signu
 ### Google Cloud (sign-in in Phase 1, Calendar and Tasks in Phase 5)
 
 1. **Sign-in:** create an OAuth client of type Web application. Add `https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback` as a redirect URI, once for each Supabase project. Enter its ID and secret in Supabase's Google provider, not in `.env.local`. Sign-in asks only for basic profile and email. Set up the consent screen first. While the app is in Testing, add yourself as a test user, or Google refuses with `access_denied`.
-2. **Calendar and Tasks (Phase 5):** enable the Google Calendar API and Google Tasks API, and add their scopes to the consent screen. Create a second OAuth client for this flow. Add `http://localhost:3000/api/google/callback` and your deployed callback URL as redirect URIs. Put its ID and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and set `GOOGLE_REDIRECT_URI` to match.
+2. **Calendar and Tasks (Phase 5):**
+   - Enable the **Google Calendar API** and the **Google Tasks API**.
+   - On the consent screen's data access page, add these three scopes. Each is asked for only when someone turns on that feature:
+     - `https://www.googleapis.com/auth/calendar.events.owned.readonly` (Calendar events: read meetings on calendars the person owns)
+     - `https://www.googleapis.com/auth/calendar.app.created` (Due dates: a separate FollowThrough calendar, and only that calendar)
+     - `https://www.googleapis.com/auth/tasks` (Google Tasks)
+   - Create a second OAuth client of type Web application. Add `http://localhost:3000/api/google/callback` and `https://YOUR_APP/api/google/callback` as redirect URIs.
+   - Put its ID and secret in `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and set `GOOGLE_REDIRECT_URI` to the callback for that environment.
+   - Also needed, in `.env.local` and Vercel:
+     - `TOKEN_ENC_KEY`, made with the command above. It encrypts Google tokens. Changing it later disconnects everyone.
+     - `SUPABASE_SECRET_KEY`, the project's secret key. Only the server uses it, to read tokens and sync tasks.
+     - `CRON_SECRET`, made with the command above. Vercel sends it to the 15-minute sync job set in `vercel.json`.
+   - Until all of these are set, Settings says Google isn't set up, and everything else works.
 3. **Testing mode:** Calendar and Tasks scopes are sensitive, so the app stays in Testing until Google verifies it.
    - Only people listed under **Test users** can authorize it, up to 100.
    - Each authorization expires after 7 days, so test users must reconnect weekly.

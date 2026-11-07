@@ -13,6 +13,8 @@ export const getAppContext = cache(async () => {
     .from("workspace_members")
     .select("workspace_id")
     .eq("user_id", session.userId)
+    // Always the same one: the oldest membership, which is the personal workspace.
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (error) throw new Error("Could not load workspace");

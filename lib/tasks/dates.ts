@@ -118,6 +118,23 @@ export function utcToLocalInput(iso: string, timezone: string): string {
 }
 
 /** "Oct 20, 2:30 PM" */
+/**
+ * Midday on a calendar date in a timezone, as an ISO instant. Used for all-day calendar
+ * events, so the meeting lands on the right day everywhere and no exact time is invented.
+ */
+export function middayInZone(date: string, timezone: string): string {
+  const [year, month, day] = date.split("-").map(Number) as [number, number, number];
+  const guess = Date.UTC(year, month - 1, day, 12);
+  // The zone's offset at that moment: how far its wall clock is from UTC.
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" })
+      .formatToParts(new Date(guess))
+      .map((part) => [part.type, part.value]),
+  );
+  const wall = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
+  return new Date(guess - (wall - guess)).toISOString();
+}
+
 export function meetingTime(iso: string, timezone: string): string {
   return new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,

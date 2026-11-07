@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { safeNextPath } from "@/lib/auth/routes";
 import { getAppContext, type AppContext } from "@/lib/data/context";
+import { syncAfterResponse } from "@/lib/google/schedule";
 import { isCalendarDate } from "@/lib/tasks/dates";
 import type { TaskEventType } from "@/lib/supabase/types";
 
@@ -110,6 +111,7 @@ export async function saveTask(_previous: FormState, formData: FormData): Promis
       return fail("We couldn't save this task. Try again.");
     }
     await recordEvent(context, task.id, "edited");
+    syncAfterResponse([task.id]);
   } else {
     const { data, error } = await supabase
       .from("tasks")
@@ -121,6 +123,7 @@ export async function saveTask(_previous: FormState, formData: FormData): Promis
       return fail("We couldn't save this task. Try again.");
     }
     await recordEvent(context, data.id, "created");
+    syncAfterResponse([data.id]);
   }
 
   revalidatePath("/", "layout");
@@ -143,6 +146,7 @@ export async function setTaskDone(formData: FormData) {
     throw new Error("Could not update task");
   }
   await recordEvent(context, id, done ? "done" : "reopened");
+  syncAfterResponse([id]);
 
   revalidatePath("/", "layout");
   redirect(safeNextPath(String(formData.get("return_to") ?? "")));

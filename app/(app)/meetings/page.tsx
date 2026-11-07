@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
+import { CalendarEvents } from "@/components/calendar-events";
+import { googleReady } from "@/lib/google/schedule";
 import { primaryButton } from "@/components/button-styles";
 import { Card, EmptyState } from "@/components/ui";
 import { getAppContext } from "@/lib/data/context";
@@ -37,6 +40,13 @@ export default async function MeetingsPage() {
       ) : (
         <EmptyState title="No meetings yet" body="Add a meeting, then bring in its notes." href="/meetings/new" action="Add a meeting" />
       )}
+
+      {googleReady() ? (
+        // Shows only when Calendar events are turned on; nothing while it loads.
+        <Suspense fallback={null}>
+          <CalendarEvents context={context} />
+        </Suspense>
+      ) : null}
     </main>
   );
 }

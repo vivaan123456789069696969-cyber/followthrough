@@ -10,6 +10,11 @@ export default async function HomePage({ searchParams }: { searchParams: Promise
         <p role="status" className="rounded-lg bg-sage-100 p-3 text-ink">
           Your account and everything in it were deleted.
         </p>
+      ) : account === "deleted-google" ? (
+        <p role="status" className="rounded-lg bg-sage-100 p-3 text-ink">
+          Your account and everything in it were deleted. Google couldn&apos;t be reached to remove FollowThrough&apos;s access, so you can remove it
+          yourself at myaccount.google.com/permissions.
+        </p>
       ) : account === "ended" ? (
         <p role="status" className="rounded-lg bg-sage-100 p-3 text-ink">
           You were signed out because this account no longer exists.

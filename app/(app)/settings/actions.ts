@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireSession } from "@/lib/auth/session";
 import { isValidTimezone } from "@/lib/auth/timezone";
+import { getAppContext } from "@/lib/data/context";
+import { disconnect, loadIntegration } from "@/lib/google/integration";
+import { syncAllOpenAfterResponse } from "@/lib/google/schedule";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { Database } from "@/lib/supabase/types";
 
 export type SettingsState = { error: string | null; saved: boolean };
@@ -59,7 +63,13 @@ export async function saveTimezone(_previous: SettingsState, formData: FormData)
 export async function saveDestination(_previous: SettingsState, formData: FormData): Promise<SettingsState> {
   const choice = DESTINATION.safeParse(formData.get("task_destination"));
   if (!choice.success) return { error: "Choose where tasks should go.", saved: false };
-  return updateProfile({ task_destination: toDestination(choice.data) }, "save_destination_failed");
+  const result = await updateProfile({ task_destination: toDestination(choice.data) }, "save_destination_failed");
+  // Choosing Google Tasks sends the open tasks already here, not only new ones.
+  if (result.saved && choice.data === "google_tasks") {
+    const { workspaceId, userId } = await getAppContext();
+    syncAllOpenAfterResponse(workspaceId, userId);
+  }
+  return result;
 }
 
 export async function saveRetention(_previous: SettingsState, formData: FormData): Promise<SettingsState> {
@@ -76,8 +86,21 @@ export async function deleteAccount(_previous: SettingsState, formData: FormData
   const typed = String(formData.get("confirm") ?? "").trim().toLowerCase();
   if (typed !== "delete") return { error: "Type delete to confirm.", saved: false };
 
-  const { supabase } = await requireSession();
-  // Phase 5: revoke Google access here first, once accounts can connect Google.
+  const { supabase, userId, workspaceId } = await getAppContext();
+
+  // Google access goes first: deleting the account destroys the token needed to revoke it.
+  const admin = createAdminClient();
+  let googleRevoked = true;
+  if (admin) {
+    try {
+      const integration = await loadIntegration(admin, workspaceId, userId);
+      if (integration) ({ revoked: googleRevoked } = await disconnect(admin, integration));
+    } catch (error) {
+      logFailure("delete_account_google_failed", error instanceof Error ? error.message : undefined);
+      return { error: "We couldn't remove Google's access first, so nothing was deleted. Try again.", saved: false };
+    }
+  }
+
   const { error } = await supabase.rpc("delete_my_account");
   if (error) {
     logFailure("delete_account_failed", error.code);
@@ -86,5 +109,6 @@ export async function deleteAccount(_previous: SettingsState, formData: FormData
 
   // The account is gone, so only this device's cookies are left to clear.
   await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
-  redirect("/?account=deleted");
+  // If Google couldn't be reached, the tokens are gone here but Google may still list the app.
+  redirect(googleRevoked ? "/?account=deleted" : "/?account=deleted-google");
 }

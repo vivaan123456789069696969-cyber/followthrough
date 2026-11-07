@@ -108,6 +108,28 @@
   - Accepted for now: no rate limit on export; the deletion notice comes from a query parameter and shows only fixed text.
 - Still open from the Phase 1 review: CAPTCHA on sign-in. It needs a CAPTCHA provider account the user sets up.
 
+### Phase 5, Google Calendar and Tasks (2026-11-09)
+- Three features, each with its own permission, asked for only when turned on: Calendar events (`calendar.events.owned.readonly`, calendars the person owns only), Due dates in Calendar (`calendar.app.created`, which can only touch calendars the app made), and Google Tasks (`tasks`). Scope names checked against Google's docs on 2026-11-08.
+- Own OAuth flow at /api/google/connect and /api/google/callback: PKCE, a random state in an httpOnly cookie bound to the user and valid 10 minutes, offline access, include_granted_scopes. Unticked permissions leave that feature off.
+- Tokens are encrypted with AES-256-GCM, bound to the user and token kind, and read only by the server through the Supabase secret key. Users can see which features are on, never tokens.
+- Sync runs after the response (Next's `after`), never holding up a page. Failures are recorded on the task with a plain message and Retry, and retried by a 15-minute Vercel Cron job with backoff (1, 2, 4 ... minutes, up to 6 hours, 8 tries). A 401 refreshes once; a dead refresh token marks the connection "needs reconnect" and shows a banner.
+- Google Tasks only when it's the chosen destination and a list is picked; the user chooses a list or makes one called FollowThrough. Push-only. Done in the app marks it completed there.
+- Due dates: all-day events "Due: {title}" on a FollowThrough calendar made when the feature is turned on. Removed when the task is done or loses its date. Found again by a private property, so retries don't duplicate.
+- Meetings from events: the last and next two weeks, read again from Google on the server when created. Attendee names only; emails and rooms aren't stored. One meeting per event.
+- Disconnect revokes at Google and forgets the tokens; meetings, tasks and what was already sent to Google stay. Deleting an account does the same first. If Google can't be reached the tokens are still forgotten (Google expires them), and the account deletion only stops if forgetting them fails.
+- Not built: deleting tasks (the app has no task deletion yet), reading changes back from Google, showing due dates next to meetings (master prompt 3.8).
+- From the Phase 5 reviews:
+  - Calendar read narrowed to `calendar.events.owned.readonly`, which Google's events.list reference accepts.
+  - Due-date events get a fixed id made from the task id, so retries and lost replies can never make a second event. Creates in Google are never retried automatically; a sync row is claimed before creating, so two runs at once can't both create.
+  - Syncs that can't run (disconnected, needs reconnect, destination changed, list or calendar deleted) are set aside with a plain reason on the task, so they don't block the retry job. A deleted calendar can be made again from Settings; a deleted list asks for a new one.
+  - Connecting, choosing a list, or choosing Google Tasks as the destination sends the person's open tasks too, not only new ones. Changing the list moves tasks to the new list.
+  - All-day events show as a date, and become meetings at midday in the person's timezone.
+  - Attendees: display names only; nothing from email addresses.
+  - Disconnect and account deletion say so if Google couldn't be reached, and point to myaccount.google.com/permissions.
+  - Google's addresses can be pointed at a test server only when `GOOGLE_TEST_ENDPOINTS=true`. `CRON_SECRET` must be at least 32 characters.
+  - Accepted for now: Meetings and Settings call Google on each visit (no cache); quick done-then-reopen can leave Google one step behind until the next change; before team workspaces, sync must use the acting member's own connection; tasks keep their quote in Google after notes are auto-deleted.
+  - Still to do by hand: one real round trip with a Google test user in Testing mode, since the tests use a stand-in for Google.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.

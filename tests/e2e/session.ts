@@ -4,10 +4,14 @@ import type { BrowserContext } from "@playwright/test";
 const FAKE_SUPABASE = "http://127.0.0.1:54399";
 
 /** A session cookie in Supabase's real format. tests/e2e/fake-supabase.mjs accepts only "good-*" signatures. */
-export async function setSession(context: BrowserContext, baseURL: string | undefined, signature: string) {
+export async function setSession(
+  context: BrowserContext,
+  baseURL: string | undefined,
+  signature: string,
+  userId = "00000000-0000-4000-8000-000000000001",
+) {
   const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
   const expires = Math.floor(Date.now() / 1000) + 3600;
-  const userId = "00000000-0000-4000-8000-000000000001";
   const accessToken = [
     encode({ alg: "HS256", typ: "JWT" }),
     encode({ sub: userId, role: "authenticated", email: "maya@example.com", exp: expires }),
@@ -33,6 +37,19 @@ export async function signInFresh(context: BrowserContext, baseURL: string | und
   const token = `good-utc${randomUUID().replace(/-/g, "")}`;
   await setSession(context, baseURL, token);
   return token;
+}
+
+/**
+ * A new person with their own user id, as the Google tests need: their Google data is
+ * found by user id. Must match userIdFor() in fake-supabase.mjs.
+ */
+export async function signInOwnUser(context: BrowserContext, baseURL: string | undefined) {
+  const hex = randomUUID().replace(/-/g, "");
+  // 7 + 32 = 39 characters: a valid base64url length.
+  const token = `good-gg${hex}`;
+  const userId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  await setSession(context, baseURL, token, userId);
+  return { token, userId };
 }
 
 export async function seed(token: string, table: string, rows: object[]) {
