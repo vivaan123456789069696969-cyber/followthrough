@@ -123,9 +123,55 @@ export type Database = {
         { task_id: string; workspace_id: string; actor_id: string; type: TaskEventType },
         never
       >;
+      suggestions: Table<
+        {
+          id: string;
+          note_id: string;
+          workspace_id: string;
+          title: string;
+          owner_name: string | null;
+          owner_contact_id: string | null;
+          due_date: string | null;
+          due_date_basis: string | null;
+          source_quote: string;
+          source_locator: { type: "timestamp" | "offset"; value: string | null; start: number; end: number; line?: number };
+          confidence: "high" | "medium" | "low";
+          open_questions: string[];
+          status: "pending" | "confirmed" | "dismissed";
+          model: string;
+        } & Timestamps,
+        never,
+        { title?: string; owner_name?: string | null; due_date?: string | null; status?: "pending" | "confirmed" | "dismissed" }
+      >;
+      ai_usage: Table<
+        { id: string; user_id: string; note_id: string | null; model: string; input_tokens: number; output_tokens: number; cost_usd: number } & Timestamps,
+        never,
+        never
+      >;
     };
     Views: Record<never, never>;
-    Functions: Record<never, never>;
+    Functions: {
+      reserve_ai_usage: {
+        Args: {
+          p_note_id: string;
+          p_model: string;
+          p_estimate_usd: number;
+          p_monthly_cap_usd: number;
+          p_hourly_limit: number;
+          p_global_cap_usd?: number | null;
+        };
+        Returns: unknown;
+      };
+      settle_ai_usage: {
+        Args: { p_usage_id: string; p_token: string; p_model: string; p_input_tokens: number; p_output_tokens: number; p_cost_usd: number };
+        Returns: undefined;
+      };
+      add_suggestions: { Args: { p_note_id: string; p_model: string; p_items: unknown }; Returns: number };
+      confirm_suggestion: {
+        Args: { p_suggestion_id: string; p_title: string; p_owner_kind: string; p_owner_name: string | null; p_due_date: string | null };
+        Returns: string;
+      };
+    };
     Enums: Record<never, never>;
     CompositeTypes: Record<never, never>;
   };

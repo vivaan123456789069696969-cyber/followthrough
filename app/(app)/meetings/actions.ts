@@ -111,6 +111,12 @@ export async function addNotes(_previous: NotesFormState, formData: FormData): P
     created_by: userId,
   });
   if (error) {
+    if (error.message === "note_rate_limit") {
+      return { error: "You've added a lot of notes this hour. Try again in a while.", text: pasted };
+    }
+    if (error.message === "note_storage_limit") {
+      return { error: "Your workspace has reached its notes limit. Delete old notes to add new ones.", text: pasted };
+    }
     logFailure("notes_create_failed", error.code);
     return { error: "We couldn't save these notes. Try again.", text: pasted };
   }

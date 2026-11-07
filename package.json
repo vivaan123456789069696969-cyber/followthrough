@@ -16,10 +16,12 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:live": "vitest run --config vitest.live.config.mts",
+    "test:ai": "vitest run --config vitest.ai.config.mts",
     "db:migrate": "supabase db push --remote",
     "db:types": "supabase gen types --lang typescript --remote --schema public > lib/supabase/types.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.119.0",
     "mammoth": "^1.13.0",

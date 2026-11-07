@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { primaryButton, secondaryButton } from "@/components/button-styles";
 import { NotesForm } from "@/components/notes-form";
+import { SuggestForm } from "@/components/suggest-form";
+import { pendingCounts } from "@/lib/data/suggestions";
 import { ConfirmButton } from "@/components/submit-button";
 import { TaskDetail } from "@/components/task-detail";
 import { TaskRow } from "@/components/task-row";
@@ -15,6 +17,9 @@ import { byUrgency } from "@/lib/tasks/logic";
 import { deleteMeeting, deleteNotes } from "../actions";
 
 export const metadata: Metadata = { title: "Meeting · FollowThrough" };
+
+// Finding actions with Claude runs from this page and can take a minute on long notes.
+export const maxDuration = 300;
 
 const FORMAT_LABELS: Record<string, string> = {
   paste: "Pasted",
@@ -40,6 +45,7 @@ export default async function MeetingPage({
   const meeting = await getMeeting(context, id);
   if (!meeting) notFound();
   const [notes, tasks] = await Promise.all([listNotes(context, id), listTasks(context, { meetingId: id })]);
+  const pending = await pendingCounts(context, notes.map((note) => note.id));
   const path = `/meetings/${id}`;
 
   return (
@@ -106,6 +112,14 @@ export default async function MeetingPage({
             </div>
             <div tabIndex={0} role="region" aria-label={notes.length > 1 ? `Meeting notes ${index + 1}` : "Meeting notes"} className="max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-ink">
               {note.raw_text}
+            </div>
+            <div className="flex flex-col gap-3 border-t border-line pt-3">
+              {pending.get(note.id) ? (
+                <Link href={`${path}/review?note=${note.id}`} className={`${primaryButton} self-start`}>
+                  Review {pending.get(note.id)} suggested {pending.get(note.id) === 1 ? "action" : "actions"}
+                </Link>
+              ) : null}
+              <SuggestForm noteId={note.id} pendingCount={pending.get(note.id) ?? 0} />
             </div>
           </Card>
         ))}

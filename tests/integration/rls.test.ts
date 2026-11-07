@@ -147,6 +147,7 @@ const ownAccess: Record<string, { insert: boolean; update: boolean; delete: bool
   task_syncs: { insert: false, update: false, delete: false },
   reminder_prefs: { insert: true, update: true, delete: false },
   reminder_log: { insert: false, update: false, delete: false },
+  // Usage is written only through reserve_ai_usage and settle_ai_usage.
   ai_usage: { insert: false, update: false, delete: false },
 };
 
@@ -197,7 +198,7 @@ describe("test coverage", () => {
 });
 
 describe("privileges in the database catalog", () => {
-  it("lets signed-in users call only the two membership helpers, and anon nothing", async () => {
+  it("lets signed-in users call only the membership helpers and the suggestion steps, and anon nothing", async () => {
     const { rows } = await db.admin<{ proname: string; anon: boolean; authed: boolean }>(`
       select p.proname,
         has_function_privilege('anon', p.oid, 'execute') as anon,
@@ -207,7 +208,14 @@ describe("privileges in the database catalog", () => {
     `);
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.filter((row) => row.anon)).toEqual([]);
-    expect(rows.filter((row) => row.authed).map((row) => row.proname).sort()).toEqual(["is_member", "is_workspace_owner"]);
+    expect(rows.filter((row) => row.authed).map((row) => row.proname).sort()).toEqual([
+      "add_suggestions",
+      "confirm_suggestion",
+      "is_member",
+      "is_workspace_owner",
+      "reserve_ai_usage",
+      "settle_ai_usage",
+    ]);
   });
 
   it("gives anon no access to any table or view", async () => {

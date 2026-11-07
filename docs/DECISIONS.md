@@ -77,6 +77,22 @@
 - Default Supabase emails use the code flow, so a link must be opened in the browser that asked for it. /auth/confirm (token hash, works in any browser) is built and tested, but Supabase only allows editing email templates once custom SMTP is set up.
 - When Resend SMTP is connected: set the Magic Link and Confirm signup templates to `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email`, on both projects, and change the "Open it in this same browser" note.
 
+### Phase 3, AI suggestions (2026-11-07)
+- Structured outputs (`output_config.format` with a Zod schema) instead of a `report_actions` tool. One call, no tool loop, and the schema is enforced by the API. Zod limits the API can't enforce (lengths, counts) are checked on the server.
+- No date or owner comes from the model alone. The model returns the exact due words; the server checks they are in the notes and turns them into a date itself, in the user's timezone, from the meeting's date. Anything unclear becomes an open question with the field left blank.
+- "We", "you", "the team" and similar never count as an owner.
+- Suggestions are written only through the `add_suggestions` database function, which checks every quote against the stored notes again. Tasks from suggestions go through `confirm_suggestion`, which copies the source on the server.
+- Limits: per user, $5 a month (`AI_MONTHLY_CAP_USD`) and 10 runs an hour (`AI_HOURLY_LIMIT`). Notes: 60 an hour per user and 5,000,000 characters per workspace, enforced in the database.
+- Usage is reserved at its worst-case cost before each call, under a per-user lock, and settled to the real cost with a one-time token only the server sees. Users can't write usage rows directly. Timeouts keep the worst-case charge. `AI_GLOBAL_MONTHLY_CAP_USD` is optional and unset for now.
+- Offsets in stored locators count characters (code points), as Postgres does, so emoji don't shift them.
+- The database re-checks each suggestion and skips any that fail, instead of rejecting the whole run. Skipped ones are counted with the removed ones.
+- A new Suggest run never brings back words already confirmed or dismissed.
+- Owners and date wording must match whole words. Date words must be in the quote or the line either side. A speaker is the owner only when they say "I'll" or similar.
+- Shifted or backward date wording ("next week", "Friday after next", "last Friday", "the day after tomorrow") is always asked about.
+- The skill's "retry once after a validation error" step is dropped: structured outputs make malformed answers rare, and a retry would double the cost.
+- Content-Security-Policy with a per-request nonce and `strict-dynamic`, so every page renders per request. Forms may post only to this app, its own Supabase project and Google.
+- Browser tests use the fake server as a stand-in Claude API. `npm run test:ai` is the only paid test.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.

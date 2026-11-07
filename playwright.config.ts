@@ -30,6 +30,10 @@ export default defineConfig({
         NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:54399",
         NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "sb_publishable_e2e_placeholder",
         NEXT_PUBLIC_GOOGLE_SIGN_IN: "true",
+        // The fake server also stands in for the Claude API, so no real key or cost.
+        ANTHROPIC_API_KEY: "sk-ant-e2e-placeholder",
+        ANTHROPIC_BASE_URL: "http://127.0.0.1:54399",
+        ANTHROPIC_MODEL: "claude-opus-5-5",
       },
       timeout: 240_000,
     },

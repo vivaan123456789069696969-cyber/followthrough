@@ -3,7 +3,7 @@ import type { TaskStatus } from "@/lib/supabase/types";
 import type { AppContext } from "./context";
 
 const TASK_COLUMNS =
-  "id, title, description, meeting_id, owner_user_id, owner_contact_id, due_date, snoozed_until, status, source_quote, completed_at, created_at";
+  "id, title, description, meeting_id, suggestion_id, owner_user_id, owner_contact_id, due_date, snoozed_until, status, source_quote, completed_at, created_at";
 
 /** Long id lists go in batches, so the request URL stays under server limits. */
 const BATCH = 100;
@@ -78,12 +78,13 @@ export async function getTask(context: AppContext, id: string) {
   const { data: task, error } = await supabase.from("tasks").select(TASK_COLUMNS).eq("id", id).maybeSingle();
   if (error || !task) return null;
 
-  const [contact, meeting, events] = await Promise.all([
+  const [contact, meeting, events, suggestion] = await Promise.all([
     task.owner_contact_id
       ? supabase.from("contacts").select("display_name").eq("id", task.owner_contact_id).maybeSingle()
       : { data: null },
     task.meeting_id ? supabase.from("meetings").select("title").eq("id", task.meeting_id).maybeSingle() : { data: null },
     supabase.from("task_events").select("id, type, created_at").eq("task_id", id).order("created_at", { ascending: false }).limit(50),
+    task.suggestion_id ? supabase.from("suggestions").select("note_id").eq("id", task.suggestion_id).maybeSingle() : { data: null },
   ]);
 
   return {
@@ -91,5 +92,12 @@ export async function getTask(context: AppContext, id: string) {
     owner_name: contact.data?.display_name ?? null,
     meeting_title: meeting.data?.title ?? null,
     events: events.data ?? [],
+    // Where "Open in notes" goes: the exact words, highlighted, when the note still exists.
+    source_href:
+      task.meeting_id && suggestion.data?.note_id
+        ? `/meetings/${task.meeting_id}/review?note=${suggestion.data.note_id}#quote-${task.suggestion_id}`
+        : task.meeting_id
+          ? `/meetings/${task.meeting_id}`
+          : null,
   };
 }

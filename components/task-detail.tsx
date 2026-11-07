@@ -71,9 +71,9 @@ export async function TaskDetail({ context, id, closeHref }: { context: AppConte
         {task.source_quote ? (
           <figure className="rounded-lg bg-sage-100 p-4">
             <blockquote className="break-words">&ldquo;{task.source_quote}&rdquo;</blockquote>
-            {task.meeting_id ? (
+            {task.source_href ? (
               <figcaption className="mt-2">
-                <Link href={`/meetings/${task.meeting_id}`} className="text-brand underline">
+                <Link href={task.source_href} className="text-brand underline">
                   Open in notes
                 </Link>
               </figcaption>

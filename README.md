@@ -31,6 +31,7 @@ The app runs at http://localhost:3000. Without Supabase settings, the public pag
 | `npm test` | Unit tests, plus RLS tests on an in-process Postgres. Needs no keys or Docker |
 | `npm run test:live` | Signup and isolation checks on the real dev and test project. Needs the `TEST_SUPABASE_*` values |
 | `npm run test:e2e` | Browser tests against a production build (Playwright). Run `npx playwright install chromium` once first |
+| `npm run test:ai` | Sample notes against the real Claude API. Needs `ANTHROPIC_API_KEY` and costs about $1 |
 | `npm run db:migrate` | Apply `supabase/migrations` to the linked Supabase project |
 | `npm run db:types` | Regenerate `lib/supabase/types.ts` from the linked project |
 
@@ -112,7 +113,19 @@ After migrating the dev and test project, run `npm run test:live` to check signu
 
 ### Anthropic (Phase 3)
 
-Add your API key to `ANTHROPIC_API_KEY`. The model is set by `ANTHROPIC_MODEL`, and `AI_MONTHLY_CAP_USD` sets the per-user monthly limit.
+Add your API key to `ANTHROPIC_API_KEY`, in `.env.local` and in Vercel's production settings. Without it, the app works as before and the Suggest actions button says AI isn't set up.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `ANTHROPIC_MODEL` | `claude-opus-5-5` | Model used to find commitments |
+| `ANTHROPIC_EFFORT` | `medium` | How much the model thinks before answering |
+| `AI_MONTHLY_CAP_USD` | `5` | Spending limit per user per month |
+| `AI_HOURLY_LIMIT` | `10` | Suggest runs per user per hour |
+| `AI_GLOBAL_MONTHLY_CAP_USD` | none | Optional limit for all users together, per month |
+
+Each run is charged its worst possible cost before Claude is called, then corrected to the real cost. A run that times out keeps the worst-case charge. Also set a spending limit on your Anthropic workspace, so a mistake here can't run up a bill.
+
+`npm run test:ai` runs the sample notes in `tests/fixtures/extraction.ts` against the real API, to check the prompt still behaves. It uses your key and costs about $1 a run. Nothing else in the test suite calls the API.
 
 ### Resend (magic links in Phase 1, reminders in Phase 6)
 

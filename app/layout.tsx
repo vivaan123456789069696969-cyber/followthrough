@@ -5,6 +5,9 @@ import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
 
+// Every page gets this request's security nonce, which only works when rendered per request.
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "FollowThrough",
   description: "A workspace that turns meeting notes into clear, owned actions people can actually follow.",

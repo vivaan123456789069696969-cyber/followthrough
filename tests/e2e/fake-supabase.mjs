@@ -16,7 +16,7 @@ function storeFor(token) {
       timezone: token.startsWith("good-utc") ? "UTC" : null,
       fullName: "Maya Chen",
       workspaceId: randomUUID(),
-      tables: { contacts: [], meetings: [], meeting_notes: [], tasks: [], task_events: [] },
+      tables: { contacts: [], meetings: [], meeting_notes: [], tasks: [], task_events: [], suggestions: [], ai_usage: [] },
     });
   }
   return stores.get(token);
@@ -126,6 +126,38 @@ createServer(async (request, response) => {
     return send(response, 200, {});
   }
 
+  // A stand-in for the Claude API. It "finds" commitments with simple rules, and adds
+  // one invented quote when the notes ask for it, so the app's checks can be seen working.
+  if (url.pathname === "/v1/messages") {
+    const body = await readBody(request);
+    const text = body.messages[0].content;
+    const notes = text.slice(text.indexOf("<meeting_notes>") + 16, text.lastIndexOf("</meeting_notes>")).trim();
+    const actions = [];
+    // Browsers send textarea text with \r\n line breaks.
+    for (const line of notes.split(/\r?\n/)) {
+      const sentence = line.replace(/^\s*(\d{1,2}:\d{2}\s+)?[\p{L} ]{1,30}:\s*/u, "");
+      const commitment = /(can you|will|I'll)\s+(.+?)[.?]?$/i.exec(sentence);
+      if (!commitment) continue;
+      const owner = /^([A-Z][a-z]+)(,| will)/.exec(sentence)?.[1] ?? null;
+      const due = /\b(by [A-Za-z]+|tomorrow|today)\b/i.exec(sentence)?.[0] ?? null;
+      const task = commitment[2].replace(/\s+(by [A-Za-z]+|tomorrow|today)\b.*$/i, "");
+      actions.push({ title: task.charAt(0).toUpperCase() + task.slice(1), owner_name: owner, due_phrase: due, source_quote: sentence, confidence: "high", open_questions: [] });
+    }
+    if (notes.includes("FABRICATE")) {
+      actions.push({ title: "Wire money", owner_name: "Maya", due_phrase: null, source_quote: "Maya will wire the money today.", confidence: "high", open_questions: [] });
+    }
+    return send(response, 200, {
+      id: `msg_${randomUUID()}`,
+      type: "message",
+      role: "assistant",
+      model: body.model,
+      content: [{ type: "text", text: JSON.stringify({ actions }) }],
+      stop_reason: "end_turn",
+      stop_sequence: null,
+      usage: { input_tokens: 1200, output_tokens: 300 },
+    });
+  }
+
   if (url.pathname.startsWith("/rest/v1/")) {
     if (!valid) return send(response, 401, { message: "JWT invalid" });
     if (token === "good-db-down") return send(response, 500, { message: "database down" });
@@ -145,8 +177,78 @@ createServer(async (request, response) => {
     if (table === "workspaces") return send(response, 200, [{ name: "Personal" }]);
     if (table === "workspace_members") return send(response, 200, [{ workspace_id: store.workspaceId }]);
 
+    // The two database functions, with the same checks as the real ones.
+    if (table === "rpc/add_suggestions") {
+      const body = await readBody(request);
+      const note = store.tables.meeting_notes.find((row) => row.id === body.p_note_id);
+      if (!note) return send(response, 403, { message: "note not found" });
+      // Offsets count characters, as Postgres does. Items that fail are skipped, as in the database.
+      const characters = Array.from(note.raw_text);
+      const decided = store.tables.suggestions.filter((row) => row.note_id === note.id && row.status !== "pending");
+      const valid = body.p_items.filter((item) => {
+        const { start, end } = item.source_locator;
+        if (characters.slice(start, end).join("") !== item.source_quote) return false;
+        return !decided.some((row) => row.source_locator.start < end && start < row.source_locator.end);
+      });
+      store.tables.suggestions = store.tables.suggestions.filter((row) => !(row.note_id === note.id && row.status === "pending"));
+      store.tables.suggestions.push(
+        ...valid.map((item) => addRow("suggestions", { ...item, note_id: note.id, workspace_id: store.workspaceId, status: "pending", model: body.p_model })),
+      );
+      return send(response, 200, valid.length);
+    }
+    if (table === "rpc/reserve_ai_usage") {
+      const body = await readBody(request);
+      const hourAgo = Date.now() - 60 * 60 * 1000;
+      const recent = store.tables.ai_usage.filter((row) => Date.parse(row.created_at) > hourAgo).length;
+      if (recent >= body.p_hourly_limit) return send(response, 400, { code: "P0001", message: "ai_hourly_limit" });
+      const row = addRow("ai_usage", { note_id: body.p_note_id, model: body.p_model, cost_usd: body.p_estimate_usd, settle_token: randomUUID() });
+      store.tables.ai_usage.push(row);
+      return send(response, 200, { id: row.id, token: row.settle_token });
+    }
+    if (table === "rpc/settle_ai_usage") {
+      const body = await readBody(request);
+      const row = store.tables.ai_usage.find((usage) => usage.id === body.p_usage_id && usage.settle_token === body.p_token);
+      if (!row) return send(response, 403, { message: "usage not open" });
+      Object.assign(row, { settle_token: null, model: body.p_model, input_tokens: body.p_input_tokens, output_tokens: body.p_output_tokens, cost_usd: body.p_cost_usd });
+      return send(response, 200, null);
+    }
+    if (table === "rpc/confirm_suggestion") {
+      const body = await readBody(request);
+      const suggestion = store.tables.suggestions.find((row) => row.id === body.p_suggestion_id);
+      if (!suggestion) return send(response, 403, { message: "suggestion not found" });
+      const existing = store.tables.tasks.find((row) => row.suggestion_id === suggestion.id);
+      if (existing) return send(response, 200, existing.id);
+      if (suggestion.status !== "pending") return send(response, 400, { message: "suggestion was dismissed" });
+      let contactId = null;
+      if (body.p_owner_kind === "other") {
+        let contact = store.tables.contacts.find((row) => row.display_name.toLowerCase() === body.p_owner_name.toLowerCase());
+        if (!contact) store.tables.contacts.push((contact = addRow("contacts", { display_name: body.p_owner_name, workspace_id: store.workspaceId })));
+        contactId = contact.id;
+      }
+      const note = store.tables.meeting_notes.find((row) => row.id === suggestion.note_id);
+      const task = addRow("tasks", {
+        workspace_id: store.workspaceId,
+        meeting_id: note?.meeting_id ?? null,
+        suggestion_id: suggestion.id,
+        title: body.p_title,
+        owner_user_id: body.p_owner_kind === "me" ? USER_ID : null,
+        owner_contact_id: contactId,
+        due_date: body.p_due_date,
+        source_quote: suggestion.source_quote,
+      });
+      store.tables.tasks.push(task);
+      Object.assign(suggestion, { status: "confirmed" });
+      return send(response, 200, task.id);
+    }
+
     const rows = store.tables[table];
     if (!rows) return send(response, 404, { message: "no such table" });
+
+    if (request.method === "HEAD") {
+      const count = rows.filter((row) => matches(row, url.searchParams)).length;
+      response.writeHead(200, { "content-range": `*/${count}` });
+      return response.end();
+    }
 
     if (request.method === "GET") {
       let found = ordered(rows.filter((row) => matches(row, url.searchParams)), url.searchParams);
