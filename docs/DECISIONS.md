@@ -55,7 +55,7 @@
 - Before Phase 1: enable_confirmations stays on so an unconfirmed address can't sign in; check every public table has RLS in the test suite.
 
 ### Before Phase 1 (2026-11-05)
-- Vercel plan: Pro, so the 15-minute reminder schedule stays.
+- Vercel plan: Pro, so the 15-minute reminder schedule stays. (Corrected 2026-11-08: Vercel reports the account as Hobby. See Phase 5.)
 - Magic-link sender: the user sets it directly in Supabase's SMTP settings, on the verified domain. Not recorded in this public repo.
 - Phase 0 approved with the CI check left open.
 - RLS tests run on PGlite (real Postgres in-process) as part of npm test, needing no Docker or keys. `npm run test:live` repeats the key checks on the real test project.
@@ -129,6 +129,7 @@
   - Google's addresses can be pointed at a test server only when `GOOGLE_TEST_ENDPOINTS=true`. `CRON_SECRET` must be at least 32 characters.
   - Accepted for now: Meetings and Settings call Google on each visit (no cache); quick done-then-reopen can leave Google one step behind until the next change; before team workspaces, sync must use the acting member's own connection; tasks keep their quote in Google after notes are auto-deleted.
   - Still to do by hand: one real round trip with a Google test user in Testing mode, since the tests use a stand-in for Google.
+- Vercel refused the 15-minute job: the account is on Hobby, which allows scheduled jobs once a day. The user chose daily for now, so the retry job runs at 06:17 UTC. Syncs still run straight after each change, and Retry works any time. Phase 6 reminders need Pro or another schedule; decide before then.
 
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.

@@ -115,7 +115,7 @@ After migrating the dev and test project, run `npm run test:live` to check signu
    - Also needed, in `.env.local` and Vercel:
      - `TOKEN_ENC_KEY`, made with the command above. It encrypts Google tokens. Changing it later disconnects everyone.
      - `SUPABASE_SECRET_KEY`, the project's secret key. Only the server uses it, to read tokens and sync tasks.
-     - `CRON_SECRET`, made with the command above. Vercel sends it to the 15-minute sync job set in `vercel.json`.
+     - `CRON_SECRET`, made with the command above. Vercel sends it to the sync retry job set in `vercel.json` (daily on the Hobby plan; every 15 minutes is possible on Pro).
    - Until all of these are set, Settings says Google isn't set up, and everything else works.
 3. **Testing mode:** Calendar and Tasks scopes are sensitive, so the app stays in Testing until Google verifies it.
    - Only people listed under **Test users** can authorize it, up to 100.
