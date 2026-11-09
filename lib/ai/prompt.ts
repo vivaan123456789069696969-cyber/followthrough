@@ -42,7 +42,8 @@ const escapeField = (text: string) => text.replace(/</g, "&lt;").replace(/\s+/g,
  * instructions. Notes keep every other "<", so the model can quote them exactly.
  */
 export function userMessage(input: { notes: string; meetingTitle: string; meetingDate: string; attendees: string[] }): string {
-  const safeNotes = input.notes.replace(/<\/?meeting_(notes|info)/gi, (tag) => tag.replace("<", "&lt;"));
+  // Spaced-out forms ("< /meeting_notes", "</ meeting_notes") are caught too.
+  const safeNotes = input.notes.replace(/<\s*\/?\s*meeting_(notes|info)/gi, (tag) => tag.replace("<", "&lt;"));
   const attendees = input.attendees.length ? input.attendees.map(escapeField).join(", ") : "not listed";
   return `<meeting_info>
 Meeting: ${escapeField(input.meetingTitle)}

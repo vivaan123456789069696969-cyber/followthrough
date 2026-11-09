@@ -18,6 +18,7 @@ Ask in small batches (max 4 at a time, multiple-choice where possible). Record a
 11. Delete behavior: when a task is deleted in the app, delete the Google Task/Calendar event too?
 12. Which Claude model for extraction (default read from env `ANTHROPIC_MODEL`)? Any monthly AI cost cap per user?
 13. Data retention: keep raw notes forever or let user auto-delete after N days?
+14. Wispr Flow export samples (still open, 2026-11-09): 2 or 3 real, anonymised exports are needed to check the import against Wispr's actual format and to pass Phase 7's "sample exports import into a meeting" check. Until then the import is generic. API docs would be needed for any direct connection.
 14. Analytics/error tracking (Sentry, PostHog) wanted? Yes/no.
 15. Branding: logo, final colors/fonts, or generate a simple wordmark?
 16. Seed/demo content: use the deck's Maya Chen / Product sync scenario?

@@ -1,4 +1,6 @@
-export const NOTE_FORMATS = ["txt", "md", "vtt", "srt", "docx"] as const;
+import "server-only";
+
+export const NOTE_FORMATS =["txt", "md", "vtt", "srt", "docx"] as const;
 export type FileNoteFormat = (typeof NOTE_FORMATS)[number];
 
 /** Vercel rejects larger request bodies, and notes this large would be over the text cap anyway. */
@@ -31,10 +33,26 @@ export function hasTimestamps(text: string): boolean {
 
 export type ParsedNote = { ok: true; text: string; hasTimestamps: boolean } | { ok: false; message: string };
 
-/** Keeps the words exactly as given, because source quotes must match them later. */
+/**
+ * Characters that are never words: control characters other than tabs and line breaks,
+ * and invisible ones that reorder or hide text (bidi overrides, zero-width space, word
+ * joiner, a stray byte-order mark). Zero-width joiners stay: Hindi and emoji need them.
+ */
+const NOT_CONTENT = /[\u0001-\u0008\u000b\u000c\u000e-\u001f\u007f​⁠‪-‮⁦-⁩﻿]/g;
+
+export function stripNonContent(text: string): string {
+  return text.replace(NOT_CONTENT, "");
+}
+
+/**
+ * The same checks for every note, pasted or uploaded, from any source. Only characters
+ * that are never words are removed; everything else is kept exactly, because source
+ * quotes must match the stored text later.
+ */
 export function validateNoteText(raw: string): ParsedNote {
-  const text = raw.replace(/^﻿/, "");
-  if (text.includes("\u0000")) return { ok: false, message: "This file doesn't look like text." };
+  // A NUL means binary data, not text: refused rather than cleaned, the same for pastes and files.
+  if (raw.includes("\u0000")) return { ok: false, message: "This file doesn't look like text." };
+  const text = stripNonContent(raw);
   if (text.trim().length === 0) return { ok: false, message: "Add some notes first." };
 
   const limit = maxNoteChars();
@@ -51,28 +69,39 @@ const MAX_DOCX_UNPACKED_BYTES = 20 * 1024 * 1024;
 
 /**
  * A .docx is a zip. A small one can unpack to gigabytes and exhaust the server's memory,
- * so check the sizes the zip declares before letting the Word reader unpack anything.
+ * and a crafted one can lie about its sizes. So each part is actually unpacked as a
+ * stream, counting real bytes, and stopped as soon as the total passes the limit. Nothing
+ * is kept; the Word reader unpacks it again only once this has passed.
  */
-export async function docxIsSafeToOpen(bytes: ArrayBuffer): Promise<boolean> {
+export async function checkDocx(bytes: ArrayBuffer): Promise<"ok" | "too_large" | "unreadable"> {
+  type Stream = { on(event: string, handler: (value: Uint8Array) => void): Stream; pause(): Stream; resume(): Stream };
   try {
     const { default: JSZip } = await import("jszip");
     const zip = await JSZip.loadAsync(bytes);
-    const entries = Object.values(zip.files);
-    if (entries.length > MAX_DOCX_ENTRIES) return false;
+    const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+    if (entries.length > MAX_DOCX_ENTRIES) return "too_large";
 
     let total = 0;
     for (const entry of entries) {
-      if (entry.dir) continue;
-      // JSZip reads each entry's declared size from the zip's index without unpacking it.
-      const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize;
-      if (typeof declared !== "number") return false;
-      total += declared;
-      if (total > MAX_DOCX_UNPACKED_BYTES) return false;
+      const stream = (entry as unknown as { internalStream(type: "uint8array"): Stream }).internalStream("uint8array");
+      const result = await new Promise<"ok" | "too_large" | "unreadable">((resolve) => {
+        stream
+          .on("data", (chunk) => {
+            total += chunk.length;
+            if (total > MAX_DOCX_UNPACKED_BYTES) {
+              stream.pause();
+              resolve("too_large");
+            }
+          })
+          .on("error", () => resolve("unreadable"))
+          .on("end", () => resolve("ok"))
+          .resume();
+      });
+      if (result !== "ok") return result;
     }
-    return true;
+    return "ok";
   } catch {
-    // Not a readable zip. The Word reader reports that with its own message.
-    return true;
+    return "unreadable";
   }
 }
 
@@ -84,9 +113,9 @@ export async function parseNoteFile(name: string, bytes: ArrayBuffer): Promise<P
 
   let text: string;
   if (format === "docx") {
-    if (!(await docxIsSafeToOpen(bytes))) {
-      return { ok: false, message: "This Word file is too large to read." };
-    }
+    const check = await checkDocx(bytes);
+    if (check === "too_large") return { ok: false, message: "This Word file is too large to read." };
+    if (check === "unreadable") return { ok: false, message: "We couldn't read this Word file." };
     try {
       const mammoth = await import("mammoth");
       const result = await mammoth.extractRawText({ buffer: Buffer.from(bytes) });
@@ -98,7 +127,7 @@ export async function parseNoteFile(name: string, bytes: ArrayBuffer): Promise<P
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
     } catch {
-      return { ok: false, message: "This file isn't saved as UTF-8 text. Save it as UTF-8 and try again." };
+      return { ok: false, message: "This file uses a text format we can't read. Save it as plain text (UTF-8) and try again." };
     }
   }
 

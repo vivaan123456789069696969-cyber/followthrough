@@ -210,7 +210,7 @@ test.describe("notes", () => {
     await page.getByRole("button", { name: "Add notes" }).click();
 
     await expect(page.getByRole("region", { name: "Meeting notes" })).toContainText("Confirm research interview slots");
-    await expect(page.getByText("Transcript")).toBeVisible();
+    await expect(page.getByText("Transcript", { exact: true })).toBeVisible();
     await expect(page.getByText("Has timestamps")).toBeVisible();
   });
 

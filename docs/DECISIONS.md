@@ -136,7 +136,7 @@
 - Sender: not chosen yet. Emails are only logged until the user sets RESEND_FROM (and RESEND_API_KEY, RESEND_ENABLED=true) in Vercel.
 - Defaults: reminders off until the person turns them on. Then: morning digest at 08:00, "1 day before" off, quiet hours 21:00 to 07:00, all in the person's timezone.
 
-### Phase 6, how it works (2026-11-09)
+### Phase 6, how it works (2026-11-09, approved by the user the same day; emails send once the secrets and sender are set)
 - One digest email a day at most, at the person's chosen time in their timezone. A late run still sends within 3 hours, but never inside quiet hours; a time inside quiet hours waits until they end. A second email within 20 hours is refused, so changing the time or timezone after today's email doesn't bring another.
 - Each task is claimed in reminder_log (unique per task, kind and moment) before the email is sent; claims are given back if sending fails or errors. Resend gets an idempotency key per set of claims.
 - Contents: due today, overdue for up to 7 days, due tomorrow (if on), and on Mondays the weekly "waiting on others" list (if on). Only the person's own tasks: ones they own, or made for others. Snoozed, done and dismissed tasks are left out. At most 25 per email, most urgent first, with "And N more".
@@ -144,6 +144,11 @@
 - Log-only mode (no sender yet) keeps claims but never marks anything sent; a real email still goes once sending is on.
 - Test switches (simulated clock, stand-in servers) are ignored on Vercel production.
 - The pg_net job only sends its secret over https. The migration's revoke on the `net` schema has no effect: Supabase's own admin role granted pg_net to every role, and only it can take that back. This is safe because the `net` schema isn't exposed through the Data API (checked 2026-11-09: only the 2 standard schemas are), so users can't call pg_net or read its queue. Never add `net` to the exposed schemas.
+
+### Phase 7, Wispr Flow import (2026-11-09)
+- The user has no Wispr Flow export samples or API docs, so the import is generic: when adding notes, choose "Wispr Flow", then paste or upload .txt, .md, .vtt, .srt or .docx. Notes are saved with source `wispr_import` and labelled "Wispr Flow import". A Wispr-specific format can be added from real samples later.
+- Only a byte-order mark and stray control characters (not tabs or line breaks) are removed; the words are kept exactly, so quotes still match. Size, type, UTF-8 and emptiness are checked on the server like any upload.
+- Sources come from one list (lib/notes/source-list.ts). The direct connection is listed as needing validation, can't be chosen, and shows as "Coming after validation" with no button. Nothing claims a connection.
 
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getAppContext } from "@/lib/data/context";
-import { parseNoteFile, validateNoteText, type ParsedNote } from "@/lib/notes/parse";
+import { formatFromFileName, MAX_UPLOAD_BYTES, parseNoteFile, validateNoteText, type ParsedNote } from "@/lib/notes/parse";
+import { isSelectableSource, parseWispr } from "@/lib/notes/sources";
 import { localToUtc } from "@/lib/tasks/dates";
 import type { NoteFormat } from "@/lib/supabase/types";
 
@@ -94,8 +95,18 @@ export async function addNotes(_previous: NotesFormState, formData: FormData): P
   // An empty file box still sends a nameless, zero-byte file, so only a non-empty one counts.
   const hasFile = file instanceof File && file.size > 0;
 
+  const source = formData.get("source") ?? "notes";
+  if (!isSelectableSource(source)) return { error: "Choose where these notes are from.", text: pasted };
+  // Cheap checks first, before reading a file into memory.
+  if (hasFile && file.size > MAX_UPLOAD_BYTES) return { error: "This file is too large. The limit is 4 MB.", text: pasted };
+  if (hasFile && !formatFromFileName(file.name)) return { error: "Upload a .txt, .md, .vtt, .srt or .docx file.", text: pasted };
+
   let parsed: ParsedNote & { format?: NoteFormat };
-  if (hasFile) {
+  if (source === "wispr_import") {
+    // Saved as Wispr Flow notes whether pasted or uploaded, so they're labelled that way.
+    const wispr = await parseWispr(hasFile ? { file: { name: file.name, bytes: await file.arrayBuffer() } } : { text: pasted });
+    parsed = wispr.ok ? { ...wispr, format: "wispr_import" } : wispr;
+  } else if (hasFile) {
     parsed = await parseNoteFile(file.name, await file.arrayBuffer());
   } else {
     parsed = { ...validateNoteText(pasted), format: "paste" };

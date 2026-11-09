@@ -1,7 +1,10 @@
 // @vitest-environment node
 import JSZip from "jszip";
-import { describe, expect, it } from "vitest";
-import { charCount, formatFromFileName, hasTimestamps, parseNoteFile, validateNoteText } from "@/lib/notes/parse";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("server-only", () => ({}));
+
+const { charCount, formatFromFileName, hasTimestamps, parseNoteFile, validateNoteText } = await import("@/lib/notes/parse");
 
 const bytes = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
 

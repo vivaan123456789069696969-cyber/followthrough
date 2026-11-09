@@ -1,3 +1,4 @@
+import { NOTE_SOURCES } from "@/lib/notes/source-list";
 import { Badge, Card } from "./ui";
 
 /**
@@ -5,6 +6,9 @@ import { Badge, Card } from "./ui";
  * connection to claim. Google is turned on in Settings, if this app has it set up.
  */
 export function SourceCards({ googleAvailable }: { googleAvailable: boolean }) {
+  // Wording comes from the one list of sources, so setup, Settings and the notes form agree.
+  const wispr = NOTE_SOURCES.find((source) => source.id === "wispr_import")!;
+  const direct = NOTE_SOURCES.find((source) => source.id === "wispr_api")!;
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Card className="flex flex-col gap-3 p-5">
@@ -12,11 +16,15 @@ export function SourceCards({ googleAvailable }: { googleAvailable: boolean }) {
           <h3 className="text-lg font-semibold text-ink">Wispr Flow</h3>
           <Badge tone="plain">Import</Badge>
         </div>
-        <p className="text-ink-muted">Meeting notes and transcripts.</p>
-        <p className="text-sm text-ink">
-          Paste or upload notes from Wispr Flow when you add notes to a meeting. FollowThrough reads only what you give it.
-        </p>
-        <p className="text-sm text-ink-muted">A direct connection to Wispr Flow needs checking with Wispr first, so there isn&apos;t one.</p>
+        <p className="text-ink-muted">{wispr.description}</p>
+        <p className="text-sm text-ink">When you add notes to a meeting, choose Wispr Flow, then paste or upload them.</p>
+        <div className="flex flex-col gap-1 rounded-lg border border-dashed border-line p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-ink">{direct.label}</p>
+            <Badge tone="lilac">Coming after validation</Badge>
+          </div>
+          <p className="text-sm text-ink-muted">{direct.description}</p>
+        </div>
       </Card>
 
       <Card className="flex flex-col gap-3 p-5">
