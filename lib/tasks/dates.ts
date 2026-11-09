@@ -123,16 +123,36 @@ export function utcToLocalInput(iso: string, timezone: string): string {
  * events, so the meeting lands on the right day everywhere and no exact time is invented.
  */
 export function middayInZone(date: string, timezone: string): string {
+  return instantInZone(date, "12:00", timezone);
+}
+
+/**
+ * The moment a local date and wall-clock time ("08:00") happen in a timezone, as an ISO
+ * instant. Works across daylight saving changes; a time skipped by a spring-forward
+ * lands just after the gap.
+ */
+export function instantInZone(date: string, time: string, timezone: string): string {
   const [year, month, day] = date.split("-").map(Number) as [number, number, number];
-  const guess = Date.UTC(year, month - 1, day, 12);
-  // The zone's offset at that moment: how far its wall clock is from UTC.
+  const [hour, minute] = time.split(":").map(Number) as [number, number];
+  const target = Date.UTC(year, month - 1, day, hour, minute);
+  // Two passes: the offset can differ between the first guess and the answer near a change.
+  let guess = target;
+  for (let pass = 0; pass < 2; pass++) guess = target - (wallClock(guess, timezone) - guess);
+  // The time doesn't exist that day (clocks jumped past it): move forward by the jump, as
+  // a wall clock does, so 02:30 becomes 03:30 instead of 01:30.
+  const shortBy = target - wallClock(guess, timezone);
+  if (shortBy > 0) guess += shortBy;
+  return new Date(guess).toISOString();
+}
+
+/** Local wall-clock time in a zone at an instant, read back as if it were UTC. */
+function wallClock(instant: number, timezone: string): number {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", { timeZone: timezone, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric" })
-      .formatToParts(new Date(guess))
+      .formatToParts(new Date(instant))
       .map((part) => [part.type, part.value]),
   );
-  const wall = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
-  return new Date(guess - (wall - guess)).toISOString();
+  return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute));
 }
 
 export function meetingTime(iso: string, timezone: string): string {

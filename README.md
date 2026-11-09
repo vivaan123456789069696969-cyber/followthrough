@@ -143,13 +143,26 @@ Each run is charged its worst possible cost before Claude is called, then correc
 
 1. Confirm your sending domain shows SPF and DKIM as verified.
 2. For Supabase SMTP, use host `smtp.resend.com`, port `465`, username `resend`, an API key as the password, and a sender address on your verified domain.
-3. For reminders, set `RESEND_API_KEY` and `RESEND_FROM`. Emails are only logged until `RESEND_ENABLED=true`.
+3. For reminders, in Vercel (Production):
+   - `RESEND_API_KEY`: a Resend API key with sending access.
+   - `RESEND_FROM`: the sender, on your verified domain, for example `FollowThrough <reminders@yourdomain.com>`. `RESEND_REPLY_TO` is optional.
+   - `UNSUBSCRIBE_SECRET`: made with the command above, at least 32 characters. Without it no reminder is sent, because every email needs a working unsubscribe link.
+   - `RESEND_ENABLED=true`. Until then emails are only logged.
+4. **Schedule (Supabase calls the app every 15 minutes).** The Phase 6 migration sets up the job; it does nothing until Supabase knows the app's address and the job secret. On the production project, in the SQL editor, run these two lines with your own values (the same `CRON_SECRET` as in Vercel):
+
+   ```sql
+   select vault.create_secret('https://YOUR_APP', 'app_url');
+   select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
+   ```
+
+   Each run sends due reminders and retries Google syncs. To change a value later, use `vault.update_secret`.
+5. Reminders are off for everyone until each person turns them on in Settings. The morning email goes at their chosen time in their own timezone, waits out quiet hours, and is sent once per day, however often the job runs. Settings has a preview of today's email.
 
 ### Vercel (first deploy)
 
 1. Import the GitHub repo. Vercel detects Next.js.
 2. Add the production environment variables, including `NEXT_PUBLIC_APP_URL`, because production won't start sign-in without it. Never prefix server secrets with `NEXT_PUBLIC_`. Scope `SUPABASE_SECRET_KEY` and later server secrets to **Production** only, and point Preview at the dev project, so code in a preview build can't reach production data. `NEXT_PUBLIC_*` values are built in, so redeploy after changing them.
-3. Reminders run from Vercel Cron. The Hobby plan allows one run per day at an imprecise time, and the Pro plan allows one per minute. See [docs/DECISIONS.md](docs/DECISIONS.md) for the schedule in use.
+3. Scheduled jobs: Supabase calls the reminder and Google sync routes every 15 minutes (see the Resend section). Vercel Cron also runs the Google retry once a day as a backup, which fits the Hobby plan.
 
 ### Sentry (Phase 8)
 

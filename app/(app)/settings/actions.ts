@@ -78,6 +78,48 @@ export async function saveRetention(_previous: SettingsState, formData: FormData
   return updateProfile({ note_retention_days: choice.data === "keep" ? null : Number(choice.data) }, "save_retention_failed");
 }
 
+const TIME = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Enter a time like 08:00.");
+
+/** Reminder settings. Quiet hours need both ends or neither. */
+export async function saveReminders(_previous: SettingsState, formData: FormData): Promise<SettingsState> {
+  const parsed = z
+    .object({
+      digest_time: TIME,
+      quiet_start: TIME.or(z.literal("")),
+      quiet_end: TIME.or(z.literal("")),
+    })
+    .safeParse({
+      digest_time: formData.get("digest_time") ?? "",
+      quiet_start: formData.get("quiet_start") ?? "",
+      quiet_end: formData.get("quiet_end") ?? "",
+    });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the times.", saved: false };
+  const { digest_time, quiet_start, quiet_end } = parsed.data;
+  if (Boolean(quiet_start) !== Boolean(quiet_end)) return { error: "Set both ends of quiet hours, or neither.", saved: false };
+  if (quiet_start && quiet_start === quiet_end) return { error: "Quiet hours need to start and end at different times.", saved: false };
+
+  const on = (name: string) => formData.get(name) === "on";
+  const { supabase, userId } = await requireSession();
+  const { error } = await supabase.from("reminder_prefs").upsert(
+    {
+      user_id: userId,
+      enabled: on("enabled"),
+      digest_time,
+      day_before: on("day_before"),
+      quiet_start: quiet_start || null,
+      quiet_end: quiet_end || null,
+      types: { due_today: on("due_today"), overdue: on("overdue"), waiting_weekly: on("waiting_weekly") },
+    },
+    { onConflict: "user_id" },
+  );
+  if (error) {
+    logFailure("save_reminders_failed", error.code);
+    return { error: "We couldn't save your reminder settings. Try again.", saved: false };
+  }
+  revalidatePath("/settings");
+  return { error: null, saved: true };
+}
+
 /**
  * Deletes the account and everything in it, then signs out. The word "delete" must be
  * typed first, so it can't happen by a stray click.

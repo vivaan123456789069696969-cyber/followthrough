@@ -47,6 +47,14 @@ export default defineConfig({
         // A fixed test key, used only by the fake server's data.
         TOKEN_ENC_KEY: "ZTJlLW9ubHktdGVzdC1rZXktMzItYnl0ZXMtbG9uZyE=",
         CRON_SECRET: "e2e-cron-secret-at-least-32-characters-long",
+        // Reminders: sent to the fake Resend, with a simulated clock for the tests.
+        UNSUBSCRIBE_SECRET: "e2e-unsubscribe-secret-at-least-32-chars",
+        RESEND_ENABLED: "true",
+        RESEND_API_KEY: "re_e2e_placeholder",
+        RESEND_FROM: "FollowThrough <reminders@example.test>",
+        RESEND_TEST_ENDPOINTS: "true",
+        RESEND_API_URL: "http://127.0.0.1:54399/resend/emails",
+        REMINDERS_TEST_CLOCK: "true",
       },
       timeout: 240_000,
     },

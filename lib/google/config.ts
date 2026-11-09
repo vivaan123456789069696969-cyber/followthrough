@@ -1,4 +1,5 @@
 import "server-only";
+import { testSwitch } from "@/lib/test-switches";
 
 // Which Google permission each feature asks for. Checked against Google's scope pages on
 // 2026-11-08: developers.google.com/workspace/calendar/api/auth and .../tasks/auth.
@@ -32,7 +33,7 @@ export function hasFeature(scopes: string[] | null | undefined, feature: GoogleF
  * GOOGLE_TEST_ENDPOINTS is "true": a stray setting must never send secrets elsewhere.
  */
 export function googleUrls() {
-  const test = process.env.GOOGLE_TEST_ENDPOINTS === "true";
+  const test = testSwitch("GOOGLE_TEST_ENDPOINTS");
   const pick = (override: string | undefined, real: string) => (test && override ? override : real);
   return {
     authorize: pick(process.env.GOOGLE_AUTH_URL, "https://accounts.google.com/o/oauth2/v2/auth"),

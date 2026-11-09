@@ -11,7 +11,10 @@ import { Card, inputClass, labelClass } from "@/components/ui";
 import { aiConfigured, monthlyCapUsd } from "@/lib/ai/extract";
 import { getAppContext } from "@/lib/data/context";
 import { signOut } from "../actions";
-import { saveDestination, saveName, saveRetention, saveTimezone } from "./actions";
+import { saveDestination, saveName, saveReminders, saveRetention, saveTimezone } from "./actions";
+import { ReminderFields } from "@/components/reminder-fields";
+import { prefsFromRow } from "@/lib/reminders/plan";
+import { sendingEnabled } from "@/lib/reminders/send";
 
 export const metadata: Metadata = { title: "Settings · FollowThrough" };
 
@@ -52,6 +55,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   monthStart.setUTCHours(0, 0, 0, 0);
   const { data: usage } = await supabase.from("ai_usage").select("cost_usd").eq("user_id", userId).gte("created_at", monthStart.toISOString());
   const spent = (usage ?? []).reduce((total, row) => total + Number(row.cost_usd), 0);
+  const { data: reminderRow } = await supabase
+    .from("reminder_prefs")
+    .select("enabled, digest_time, day_before, quiet_start, quiet_end, types")
+    .eq("user_id", userId)
+    .maybeSingle();
+  const reminderPrefs = prefsFromRow(reminderRow);
 
   const retention = profile?.note_retention_days ? String(profile.note_retention_days) : "keep";
   // A value saved some other way still shows as itself, so saving doesn't quietly change it.
@@ -107,6 +116,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
           <SettingsForm action={saveDestination}>
             <DestinationFields current={profile?.task_destination ?? null} idPrefix="settings-destination" googleAvailable={googleAvailable} />
           </SettingsForm>
+        </Card>
+      </Section>
+
+      <Section id="reminders-heading" title="Reminders">
+        <Card className="flex flex-col gap-4 p-5">
+          {sendingEnabled() ? null : (
+            <p className="rounded-lg bg-sage-100 p-3 text-ink">
+              Reminder emails aren&apos;t being sent from this app yet: it hasn&apos;t been given a sender address. Your settings are saved and
+              used once it has.
+            </p>
+          )}
+          <SettingsForm action={saveReminders}>
+            <ReminderFields prefs={reminderPrefs} timezone={context.timezone} />
+          </SettingsForm>
+          <a href="/settings/reminders/preview" className="self-start text-brand underline">
+            See what today&apos;s email would look like
+          </a>
         </Card>
       </Section>
 

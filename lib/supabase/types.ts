@@ -196,6 +196,50 @@ export type Database = {
           tasklist_id?: string | null;
         }
       >;
+      reminder_prefs: Table<
+        {
+          id: string;
+          user_id: string;
+          enabled: boolean;
+          digest_time: string | null;
+          day_before: boolean;
+          quiet_start: string | null;
+          quiet_end: string | null;
+          types: Record<string, unknown> | null;
+          // Readable by the server's admin client only.
+          unsubscribe_token: string;
+        } & Timestamps,
+        {
+          user_id: string;
+          enabled?: boolean;
+          digest_time?: string | null;
+          day_before?: boolean;
+          quiet_start?: string | null;
+          quiet_end?: string | null;
+          types?: Record<string, unknown>;
+        },
+        {
+          enabled?: boolean;
+          digest_time?: string | null;
+          day_before?: boolean;
+          quiet_start?: string | null;
+          quiet_end?: string | null;
+          types?: Record<string, unknown>;
+        }
+      >;
+      reminder_log: Table<
+        {
+          id: string;
+          task_id: string;
+          user_id: string;
+          kind: "due_today" | "due_tomorrow" | "overdue" | "waiting_weekly";
+          scheduled_for: string;
+          sent_at: string | null;
+          resend_id: string | null;
+        } & Timestamps,
+        { task_id: string; user_id: string; kind: "due_today" | "due_tomorrow" | "overdue" | "waiting_weekly"; scheduled_for: string },
+        { sent_at?: string | null; resend_id?: string | null }
+      >;
       task_syncs: Table<
         {
           id: string;

@@ -112,8 +112,37 @@ const DEFAULTS = {
 
 function addRow(table, row) {
   const now = new Date().toISOString();
-  return { id: randomUUID(), created_at: now, updated_at: now, ...DEFAULTS[table], ...row };
+  const extra =
+    table === "reminder_prefs"
+      ? { enabled: false, digest_time: "08:00", day_before: false, quiet_start: "21:00", quiet_end: "07:00", types: {}, unsubscribe_token: randomUUID() }
+      : {};
+  return { id: randomUUID(), created_at: now, updated_at: now, ...DEFAULTS[table], ...extra, ...row };
 }
+
+/**
+ * Inserts rows, or with ?on_conflict= behaves like an upsert: existing matches are merged,
+ * or skipped when the request asks to ignore duplicates. Returns the rows written.
+ */
+function upsertRows(rows, table, body, url, prefer) {
+  const conflict = url.searchParams.get("on_conflict")?.split(",");
+  const ignore = (prefer ?? "").includes("ignore-duplicates");
+  const written = [];
+  for (const row of Array.isArray(body) ? body : [body]) {
+    const existing = conflict && rows.find((candidate) => conflict.every((column) => String(candidate[column]) === String(row[column])));
+    if (existing) {
+      if (ignore) continue;
+      Object.assign(existing, row, { updated_at: new Date().toISOString() });
+      written.push(existing);
+    } else {
+      const created = addRow(table, row);
+      rows.push(created);
+      written.push(created);
+    }
+  }
+  return written;
+}
+
+const sentEmails = [];
 
 // ---------------------------------------------------------------------------
 // Admin access (the secret key): reads and writes across every account.
@@ -130,6 +159,11 @@ async function adminRest(request, response, url) {
     return reply(request, response, 200, store ? [{ id: store.userId, full_name: store.fullName, timezone: store.timezone, ...store.settings }] : []);
   }
 
+  if (table === "workspace_members") {
+    const members = live.map((store) => ({ workspace_id: store.workspaceId, user_id: store.userId, role: "owner", created_at: "2026-01-01T00:00:00Z" }));
+    return reply(request, response, 200, members.filter((row) => matches(row, params)).slice(0, Number(params.get("limit")) || undefined));
+  }
+
   const tablesOf = (store) => store.tables[table] ?? [];
   if (request.method === "GET") {
     let found = ordered(live.flatMap((store) => tablesOf(store).filter((row) => matches(row, params))), params);
@@ -141,15 +175,14 @@ async function adminRest(request, response, url) {
     const body = await readBody(request);
     const added = [];
     for (const row of Array.isArray(body) ? body : [body]) {
-      const store = live.find((candidate) => candidate.workspaceId === row.workspace_id);
+      // Rows find their account by workspace, or by user for per-person tables.
+      const store = live.find((candidate) => candidate.workspaceId === row.workspace_id || (!row.workspace_id && candidate.userId === row.user_id));
       if (!store) return send(response, 409, { code: "23503", message: "no such workspace" });
       const rows = tablesOf(store);
       if (table === "meetings" && row.external_event_id && rows.some((meeting) => meeting.external_event_id === row.external_event_id)) {
         return send(response, 409, { code: "23505", message: "duplicate key value violates unique constraint" });
       }
-      const created = addRow(table, row);
-      rows.push(created);
-      added.push(created);
+      added.push(...upsertRows(rows, table, row, url, request.headers.prefer));
     }
     return (request.headers.prefer ?? "").includes("return=representation") ? reply(request, response, 201, added) : send(response, 201);
   }
@@ -414,6 +447,23 @@ createServer(async (request, response) => {
 
   if (url.pathname.startsWith("/google/") || url.pathname.startsWith("/test/google")) return google(request, response, url);
 
+  // Resend, for the reminder tests: every email is kept so tests can read it.
+  if (url.pathname === "/resend/emails" && request.method === "POST") {
+    if (request.headers.authorization !== "Bearer re_e2e_placeholder") return send(response, 401, { message: "bad key" });
+    const email = { id: randomUUID(), ...(await readBody(request)), idempotencyKey: request.headers["idempotency-key"] };
+    sentEmails.push(email);
+    return send(response, 200, { id: email.id });
+  }
+  if (url.pathname === "/test/emails") return send(response, 200, sentEmails);
+
+  // The admin API's user lookup, used to find where to send reminders.
+  const adminUser = /^\/auth\/v1\/admin\/users\/([0-9a-f-]+)$/.exec(url.pathname);
+  if (adminUser && request.headers.apikey === ADMIN_KEY) {
+    const store = [...stores.values()].find((candidate) => candidate.userId === adminUser[1] && !candidate.deleted);
+    if (!store) return send(response, 404, { code: 404, msg: "User not found" });
+    return send(response, 200, { id: store.userId, aud: "authenticated", role: "authenticated", email: "maya@example.com" });
+  }
+
   // The server's admin client: no session, sees every account, like Supabase's secret key.
   if (url.pathname.startsWith("/rest/v1/") && request.headers.apikey === ADMIN_KEY) return adminRest(request, response, url);
 
@@ -581,8 +631,7 @@ createServer(async (request, response) => {
     }
     if (request.method === "POST") {
       const body = await readBody(request);
-      const added = (Array.isArray(body) ? body : [body]).map((row) => addRow(table, row));
-      rows.push(...added);
+      const added = upsertRows(rows, table, body, url, request.headers.prefer);
       return (request.headers.prefer ?? "").includes("return=representation")
         ? reply(request, response, 201, added)
         : send(response, 201);

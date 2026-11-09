@@ -108,7 +108,7 @@
   - Accepted for now: no rate limit on export; the deletion notice comes from a query parameter and shows only fixed text.
 - Still open from the Phase 1 review: CAPTCHA on sign-in. It needs a CAPTCHA provider account the user sets up.
 
-### Phase 5, Google Calendar and Tasks (2026-11-09)
+### Phase 5, Google Calendar and Tasks (2026-11-09; approved by the user 2026-11-08, with the real Google round trip still owed until Google Cloud is set up)
 - Three features, each with its own permission, asked for only when turned on: Calendar events (`calendar.events.owned.readonly`, calendars the person owns only), Due dates in Calendar (`calendar.app.created`, which can only touch calendars the app made), and Google Tasks (`tasks`). Scope names checked against Google's docs on 2026-11-08.
 - Own OAuth flow at /api/google/connect and /api/google/callback: PKCE, a random state in an httpOnly cookie bound to the user and valid 10 minutes, offline access, include_granted_scopes. Unticked permissions leave that feature off.
 - Tokens are encrypted with AES-256-GCM, bound to the user and token kind, and read only by the server through the Supabase secret key. Users can see which features are on, never tokens.
@@ -130,6 +130,20 @@
   - Accepted for now: Meetings and Settings call Google on each visit (no cache); quick done-then-reopen can leave Google one step behind until the next change; before team workspaces, sync must use the acting member's own connection; tasks keep their quote in Google after notes are auto-deleted.
   - Still to do by hand: one real round trip with a Google test user in Testing mode, since the tests use a stand-in for Google.
 - Vercel refused the 15-minute job: the account is on Hobby, which allows scheduled jobs once a day. The user chose daily for now, so the retry job runs at 06:17 UTC. Syncs still run straight after each change, and Retry works any time. Phase 6 reminders need Pro or another schedule; decide before then.
+
+### Phase 6, reminders: answered by the user (2026-11-08)
+- Schedule: Supabase's pg_cron calls the app's reminder and Google retry routes every 15 minutes (pg_net), with the app address and job secret kept in Supabase Vault. No Vercel plan change. Vercel's daily Google retry stays as a backup.
+- Sender: not chosen yet. Emails are only logged until the user sets RESEND_FROM (and RESEND_API_KEY, RESEND_ENABLED=true) in Vercel.
+- Defaults: reminders off until the person turns them on. Then: morning digest at 08:00, "1 day before" off, quiet hours 21:00 to 07:00, all in the person's timezone.
+
+### Phase 6, how it works (2026-11-09)
+- One digest email a day at most, at the person's chosen time in their timezone. A late run still sends within 3 hours, but never inside quiet hours; a time inside quiet hours waits until they end. A second email within 20 hours is refused, so changing the time or timezone after today's email doesn't bring another.
+- Each task is claimed in reminder_log (unique per task, kind and moment) before the email is sent; claims are given back if sending fails or errors. Resend gets an idempotency key per set of claims.
+- Contents: due today, overdue for up to 7 days, due tomorrow (if on), and on Mondays the weekly "waiting on others" list (if on). Only the person's own tasks: ones they own, or made for others. Snoozed, done and dismissed tasks are left out. At most 25 per email, most urgent first, with "And N more".
+- Unsubscribe: a link signed with UNSUBSCRIBE_SECRET over the user id and their unsubscribe token, POST only, no sign-in, plus List-Unsubscribe and one-click headers. Links don't expire, because unsubscribe must keep working; resetting the token or secret retires them. No email is sent without a working unsubscribe link.
+- Log-only mode (no sender yet) keeps claims but never marks anything sent; a real email still goes once sending is on.
+- Test switches (simulated clock, stand-in servers) are ignored on Vercel production.
+- The pg_net job only sends its secret over https, and signed-in users can't use pg_net.
 
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
