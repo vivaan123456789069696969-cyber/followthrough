@@ -29,7 +29,9 @@ export function NotesForm({ meetingId }: { meetingId: string }) {
                 type="radio"
                 name="source"
                 value={item.id}
-                checked={source === item.id}
+                // Not "checked": a form reset after an error would clear a controlled radio.
+                // defaultChecked follows the current choice, so a reset puts it back.
+                defaultChecked={source === item.id}
                 onChange={() => setSource(item.id)}
                 className="size-5 accent-brand"
               />

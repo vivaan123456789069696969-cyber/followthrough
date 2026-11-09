@@ -17,7 +17,7 @@ test("notes pasted from Wispr Flow are saved as Wispr Flow notes, words unchange
 
   await page.getByRole("radio", { name: "Wispr Flow" }).check();
   // Honest about the connection: information only, nothing to click.
-  await expect(page.getByText("Direct connection to Wispr Flow")).toBeVisible();
+  await expect(page.getByText("Direct connection to Wispr Flow", { exact: true })).toBeVisible();
   await expect(page.getByText("Coming after validation")).toBeVisible();
   await expect(page.getByRole("button", { name: /connect/i })).toHaveCount(0);
   await expect(page.getByText(/\bconnected\b/i)).toHaveCount(0);
@@ -84,7 +84,7 @@ test("setup shows Wispr Flow as import only, with the direct connection not avai
   await signInFresh(context, baseURL);
   await page.goto("/settings");
   const sources = page.getByRole("region", { name: "Sources" });
-  await expect(sources.getByText("Direct connection to Wispr Flow")).toBeVisible();
+  await expect(sources.getByText("Direct connection to Wispr Flow", { exact: true })).toBeVisible();
   await expect(sources.getByText("Coming after validation")).toBeVisible();
   await expect(sources.getByRole("button")).toHaveCount(0);
 });
@@ -93,5 +93,5 @@ test("ordinary notes are still the default", async ({ page, context, baseURL }) 
   await signInFresh(context, baseURL);
   await newMeeting(page);
   await expect(page.getByRole("radio", { name: "Notes or a transcript" })).toBeChecked();
-  await expect(page.getByText("Direct connection to Wispr Flow")).toHaveCount(0);
+  await expect(page.getByText("Direct connection to Wispr Flow", { exact: true })).toHaveCount(0);
 });
