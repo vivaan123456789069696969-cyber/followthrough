@@ -143,7 +143,7 @@
 - Unsubscribe: a link signed with UNSUBSCRIBE_SECRET over the user id and their unsubscribe token, POST only, no sign-in, plus List-Unsubscribe and one-click headers. Links don't expire, because unsubscribe must keep working; resetting the token or secret retires them. No email is sent without a working unsubscribe link.
 - Log-only mode (no sender yet) keeps claims but never marks anything sent; a real email still goes once sending is on.
 - Test switches (simulated clock, stand-in servers) are ignored on Vercel production.
-- The pg_net job only sends its secret over https, and signed-in users can't use pg_net.
+- The pg_net job only sends its secret over https. The migration's revoke on the `net` schema has no effect: Supabase's own admin role granted pg_net to every role, and only it can take that back. This is safe because the `net` schema isn't exposed through the Data API (checked 2026-11-09: only the 2 standard schemas are), so users can't call pg_net or read its queue. Never add `net` to the exposed schemas.
 
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
