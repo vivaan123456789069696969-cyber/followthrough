@@ -271,6 +271,7 @@ export type Database = {
       delete_my_account: { Args: Record<string, never>; Returns: undefined };
       reserve_ai_usage: {
         Args: {
+          p_user_id: string;
           p_note_id: string;
           p_model: string;
           p_estimate_usd: number;
@@ -281,7 +282,7 @@ export type Database = {
         Returns: unknown;
       };
       settle_ai_usage: {
-        Args: { p_usage_id: string; p_token: string; p_model: string; p_input_tokens: number; p_output_tokens: number; p_cost_usd: number };
+        Args: { p_user_id: string; p_usage_id: string; p_token: string; p_model: string; p_input_tokens: number; p_output_tokens: number; p_cost_usd: number };
         Returns: undefined;
       };
       add_suggestions: { Args: { p_note_id: string; p_model: string; p_items: unknown }; Returns: number };

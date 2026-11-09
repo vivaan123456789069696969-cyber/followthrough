@@ -1,12 +1,14 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { runExtraction, type ExtractionInput } from "./run";
 
 const EFFORTS = new Set(["low", "medium", "high", "xhigh", "max"] as const);
 type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
+/** Needs the Claude key, and the server's database access, which records what each run costs. */
 export function aiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+  return Boolean(process.env.ANTHROPIC_API_KEY) && createAdminClient() !== null;
 }
 
 export function aiModel(): string {

@@ -159,6 +159,29 @@ async function adminRest(request, response, url) {
     return reply(request, response, 200, store ? [{ id: store.userId, full_name: store.fullName, timezone: store.timezone, ...store.settings }] : []);
   }
 
+  // Usage is recorded by the server only. People can't call these, as in the real database.
+  if (table === "rpc/reserve_ai_usage" || table === "rpc/settle_ai_usage") {
+    const body = await readBody(request);
+    // Found through the note or the usage row, since test people can share one user id.
+    const store = live.find((candidate) =>
+      table === "rpc/reserve_ai_usage"
+        ? candidate.tables.meeting_notes.some((note) => note.id === body.p_note_id)
+        : candidate.tables.ai_usage.some((usage) => usage.id === body.p_usage_id),
+    );
+    if (!store) return send(response, 403, { code: "42501", message: "note not found" });
+    if (table === "rpc/reserve_ai_usage") {
+      const hourAgo = Date.now() - 60 * 60 * 1000;
+      const recent = store.tables.ai_usage.filter((row) => Date.parse(row.created_at) > hourAgo).length;
+      if (recent >= body.p_hourly_limit) return send(response, 400, { code: "P0001", message: "ai_hourly_limit" });
+      const row = addRow("ai_usage", { user_id: body.p_user_id, note_id: body.p_note_id, model: body.p_model, cost_usd: body.p_estimate_usd, settle_token: randomUUID() });
+      store.tables.ai_usage.push(row);
+      return send(response, 200, { id: row.id, token: row.settle_token });
+    }
+    const row = store.tables.ai_usage.find((usage) => usage.id === body.p_usage_id && usage.settle_token === body.p_token);
+    if (!row) return send(response, 403, { message: "usage not open" });
+    Object.assign(row, { settle_token: null, model: body.p_model, input_tokens: body.p_input_tokens, output_tokens: body.p_output_tokens, cost_usd: body.p_cost_usd });
+    return send(response, 200, null);
+  }
   if (table === "workspace_members") {
     const members = live.map((store) => ({ workspace_id: store.workspaceId, user_id: store.userId, role: "owner", created_at: "2026-01-01T00:00:00Z" }));
     return reply(request, response, 200, members.filter((row) => matches(row, params)).slice(0, Number(params.get("limit")) || undefined));
@@ -567,22 +590,6 @@ createServer(async (request, response) => {
         ...valid.map((item) => addRow("suggestions", { ...item, note_id: note.id, workspace_id: store.workspaceId, status: "pending", model: body.p_model })),
       );
       return send(response, 200, valid.length);
-    }
-    if (table === "rpc/reserve_ai_usage") {
-      const body = await readBody(request);
-      const hourAgo = Date.now() - 60 * 60 * 1000;
-      const recent = store.tables.ai_usage.filter((row) => Date.parse(row.created_at) > hourAgo).length;
-      if (recent >= body.p_hourly_limit) return send(response, 400, { code: "P0001", message: "ai_hourly_limit" });
-      const row = addRow("ai_usage", { note_id: body.p_note_id, model: body.p_model, cost_usd: body.p_estimate_usd, settle_token: randomUUID() });
-      store.tables.ai_usage.push(row);
-      return send(response, 200, { id: row.id, token: row.settle_token });
-    }
-    if (table === "rpc/settle_ai_usage") {
-      const body = await readBody(request);
-      const row = store.tables.ai_usage.find((usage) => usage.id === body.p_usage_id && usage.settle_token === body.p_token);
-      if (!row) return send(response, 403, { message: "usage not open" });
-      Object.assign(row, { settle_token: null, model: body.p_model, input_tokens: body.p_input_tokens, output_tokens: body.p_output_tokens, cost_usd: body.p_cost_usd });
-      return send(response, 200, null);
     }
     if (table === "rpc/confirm_suggestion") {
       const body = await readBody(request);

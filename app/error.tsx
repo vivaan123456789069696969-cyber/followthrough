@@ -2,9 +2,11 @@
 
 import { signOut } from "@/app/(app)/actions";
 import { primaryButton, secondaryButton } from "@/components/button-styles";
+import { useReportError } from "@/components/report-error";
 
 /** Offers a way out even when a private page can't load, including signing out. */
-export default function ErrorPage({ reset }: { reset: () => void }) {
+export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useReportError(error);
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-4 px-4 py-12">
       <p className="text-base font-semibold tracking-tight text-brand">followthrough</p>

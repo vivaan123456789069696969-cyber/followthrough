@@ -10,6 +10,7 @@ import { getAppContext } from "@/lib/data/context";
 import { syncAfterResponse } from "@/lib/google/schedule";
 import { getMeeting } from "@/lib/data/meetings";
 import { getNote, looksLikeMe } from "@/lib/data/suggestions";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isCalendarDate, longDate, todayInZone } from "@/lib/tasks/dates";
 
 export type ActionState = { error: string | null };
@@ -43,8 +44,13 @@ export async function suggestActions(_previous: ActionState, formData: FormData)
 
   // Reserve the most this can cost before calling, so parallel requests and
   // failed calls all count against the limits.
+  // Usage is recorded with the server's own access, for the person whose verified sign-in
+  // this is. People can't write usage records themselves.
+  const admin = createAdminClient();
+  if (!admin) return { error: "AI suggestions aren't set up yet. You can add actions yourself." };
   const model = aiModel();
-  const reservation = await context.supabase.rpc("reserve_ai_usage", {
+  const reservation = await admin.rpc("reserve_ai_usage", {
+    p_user_id: context.userId,
     p_note_id: note.id,
     p_model: model,
     p_estimate_usd: worstCaseCostUsd(model, note.raw_text.length),
@@ -71,7 +77,8 @@ export async function suggestActions(_previous: ActionState, formData: FormData)
 
   // Without real figures (a timeout), the reserved worst case stays as the charge.
   if (result.usageKnown) {
-    const { error } = await context.supabase.rpc("settle_ai_usage", {
+    const { error } = await admin.rpc("settle_ai_usage", {
+      p_user_id: context.userId,
       p_usage_id: usage.id,
       p_token: usage.token,
       p_model: result.model,

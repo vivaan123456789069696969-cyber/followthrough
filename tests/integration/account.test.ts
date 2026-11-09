@@ -74,7 +74,8 @@ describe("delete_my_account", () => {
   it("removes every row the person owns, and nobody else's", async () => {
     const maya = await person("maya@example.com");
     const other = await person("other@example.com");
-    const usage = await db.asUser<{ r: { id: string } }>(maya.userId, "select public.reserve_ai_usage($1, 'claude-test', 0.1, 5, 10, null) as r", [
+    const usage = await db.asServer<{ r: { id: string } }>("select public.reserve_ai_usage($1, $2, 'claude-test', 0.1, 5, 10, null) as r", [
+      maya.userId,
       maya.noteId,
     ]);
 

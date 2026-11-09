@@ -58,6 +58,12 @@ describe("token encryption", () => {
     expect(() => decryptToken(tampered, "google:u1:refresh")).toThrow();
   });
 
+  it("refuses a shortened authentication tag", () => {
+    const [version, iv, tag, ciphertext] = encryptToken("1//refresh", "google:u1:refresh").split(".");
+    const short = Buffer.from(tag!, "base64url").subarray(0, 4).toString("base64url");
+    expect(() => decryptToken([version, iv, short, ciphertext].join("."), "google:u1:refresh")).toThrow();
+  });
+
   it("won't run without a proper key", () => {
     const saved = process.env.TOKEN_ENC_KEY;
     process.env.TOKEN_ENC_KEY = Buffer.from("short").toString("base64");

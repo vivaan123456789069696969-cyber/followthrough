@@ -71,6 +71,11 @@ export async function createTestDb() {
     return asRole<T>("anon", null, sql, params);
   }
 
+  /** Run as the app's server, using the secret key (the service role). */
+  async function asServer<T = Record<string, unknown>>(sql: string, params: unknown[] = []) {
+    return asRole<T>("service_role", null, sql, params);
+  }
+
   async function signUp(email: string, metadata: Record<string, unknown> = {}) {
     const { rows } = await admin<{ id: string }>(
       "insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id",
@@ -84,5 +89,5 @@ export async function createTestDb() {
     return { userId, workspaceId: members.rows[0]!.workspace_id };
   }
 
-  return { admin, asUser, asAnon, signUp, close: () => pg.close() };
+  return { admin, asUser, asAnon, asServer, signUp, close: () => pg.close() };
 }

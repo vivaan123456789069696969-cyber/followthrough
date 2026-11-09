@@ -36,8 +36,11 @@ export function encryptToken(plaintext: string, context: string): string {
 export function decryptToken(sealed: string, context: string): string {
   const [version, iv, tag, ciphertext] = sealed.split(".");
   if (version !== VERSION || !iv || !tag || ciphertext === undefined) throw new Error("Unknown token format");
-  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"));
+  const authTag = Buffer.from(tag, "base64url");
+  // A shortened tag is easier to forge, and Node would accept one unless told the length.
+  if (authTag.length !== 16) throw new Error("Unknown token format");
+  const decipher = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"), { authTagLength: 16 });
   decipher.setAAD(Buffer.from(context, "utf8"));
-  decipher.setAuthTag(Buffer.from(tag, "base64url"));
+  decipher.setAuthTag(authTag);
   return Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8");
 }

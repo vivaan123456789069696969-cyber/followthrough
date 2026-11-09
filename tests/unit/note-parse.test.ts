@@ -116,7 +116,25 @@ describe("parseNoteFile", () => {
 
     const bomb = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer;
     expect(await parseNoteFile("bomb.docx", bomb)).toEqual({ ok: false, message: "This Word file is too large to read." });
-  });
+    // Building a 25 MB test file is slow when the machine is busy, so this is given time.
+  }, 30_000);
+
+  it("catches a Word file that lies about its size, by counting the real bytes", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", "a".repeat(25 * 1024 * 1024));
+    const out = await zip.generateAsync({ type: "uint8array", compression: "DEFLATE" });
+    // Overwrite the sizes the zip declares (in its local header and its index) with a small number.
+    const view = new DataView(out.buffer, out.byteOffset, out.byteLength);
+    for (let i = 0; i + 4 < out.byteLength; i++) {
+      const signature = view.getUint32(i, true);
+      if (signature === 0x04034b50 && i + 26 < out.byteLength) view.setUint32(i + 22, 100, true); // local header
+      if (signature === 0x02014b50 && i + 28 < out.byteLength) view.setUint32(i + 24, 100, true); // central directory
+    }
+    const liar = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength) as ArrayBuffer;
+    const result = await parseNoteFile("liar.docx", liar);
+    // Refused one way or the other: too large once counted, or unreadable. Never accepted.
+    expect(result.ok).toBe(false);
+  }, 30_000);
 
   it("rejects a damaged Word file", async () => {
     expect(await parseNoteFile("notes.docx", bytes("not a zip"))).toEqual({ ok: false, message: "We couldn't read this Word file." });

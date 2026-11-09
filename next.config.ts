@@ -13,6 +13,10 @@ const nextConfig: NextConfig = {
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+          // Nothing here uses the camera, microphone or location, so the browser is told never to allow them.
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+          // Other sites' windows can't hold a reference to this app's windows.
+          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
         ],
       },
     ];

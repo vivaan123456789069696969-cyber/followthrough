@@ -1,3 +1,5 @@
+import { sentryOrigin } from "@/lib/sentry/options";
+
 /**
  * The Content-Security-Policy for every page. Scripts run only with this request's nonce,
  * so injected markup can't run code even if it got past React's escaping.
@@ -10,7 +12,8 @@ export function contentSecurityPolicy(nonce: string, isDev = process.env.NODE_EN
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self'",
-    `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+    // Plus the error-reporting address, only when reporting is turned on.
+    `connect-src 'self'${errorReportingOrigin()}${isDev ? " ws: wss:" : ""}`,
     "object-src 'none'",
     "base-uri 'self'",
     // Sign-in forms hand over to Supabase and Google.
@@ -18,6 +21,11 @@ export function contentSecurityPolicy(nonce: string, isDev = process.env.NODE_EN
     "frame-ancestors 'none'",
     ...(isDev ? [] : ["upgrade-insecure-requests"]),
   ].join("; ");
+}
+
+function errorReportingOrigin(): string {
+  const origin = sentryOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN);
+  return origin ? ` ${origin}` : "";
 }
 
 /** This app's own Supabase project only, not every project on supabase.co. */

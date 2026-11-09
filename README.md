@@ -4,7 +4,7 @@ Meetings end. Follow-through starts.
 
 A workspace that turns meeting notes into clear, owned actions people can actually follow.
 
-**Status:** Phase 1 (sign-in, schema and row level security). See [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md).
+**Status:** all eight build phases are built. What remains is setting up each service you want to use (see the Setup guide) and a real test with Google. See [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) and [docs/POST-DEPLOY-CHECKLIST.md](docs/POST-DEPLOY-CHECKLIST.md).
 
 ## Run it locally
 
@@ -32,6 +32,7 @@ The app runs at http://localhost:3000. Without Supabase settings, the public pag
 | `npm run test:live` | Signup and isolation checks on the real dev and test project. Needs the `TEST_SUPABASE_*` values |
 | `npm run test:e2e` | Browser tests against a production build (Playwright). Run `npx playwright install chromium` once first |
 | `npm run test:ai` | Sample notes against the real Claude API. Needs `ANTHROPIC_API_KEY` and costs about $1 |
+| `npm run seed -- you@example.com` | Adds the deck's demo scenario (Maya Chen, Product sync) to one account that has already signed in. Dev project only: it refuses anything else. Needs `.env.local` |
 | `npm run db:migrate` | Apply `supabase/migrations` to the linked Supabase project |
 | `npm run db:types` | Regenerate `lib/supabase/types.ts` from the linked project |
 
@@ -44,6 +45,7 @@ The app runs at http://localhost:3000. Without Supabase settings, the public pag
 | [docs/BUILD-PLAN.md](docs/BUILD-PLAN.md) | Phases and acceptance tests |
 | [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Schema and RLS rules |
 | [docs/DECISIONS.md](docs/DECISIONS.md) | Every decision made so far |
+| [docs/POST-DEPLOY-CHECKLIST.md](docs/POST-DEPLOY-CHECKLIST.md) | What to check after deploying, and what each optional service still needs |
 
 ## Setup guide
 
@@ -125,7 +127,7 @@ After migrating the dev and test project, run `npm run test:live` to check signu
 
 ### Anthropic (Phase 3)
 
-Add your API key to `ANTHROPIC_API_KEY`, in `.env.local` and in Vercel's production settings. Without it, the app works as before and the Suggest actions button says AI isn't set up.
+Add your API key to `ANTHROPIC_API_KEY`, in `.env.local` and in Vercel's production settings. Suggesting actions also needs `SUPABASE_SECRET_KEY`, because only the server may record what each run costs (people can't write usage records themselves). Without both, the app works as before and the Suggest actions button says AI isn't set up.
 
 | Variable | Default | What it does |
 |---|---|---|
@@ -155,7 +157,11 @@ Each run is charged its worst possible cost before Claude is called, then correc
    select vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
    ```
 
-   Each run sends due reminders and retries Google syncs. To change a value later, use `vault.update_secret`.
+   Each run sends due reminders and retries Google syncs.
+
+   - The job needs two Supabase features: **pg_cron** and **Vault**. Both are on by default in new projects; if either is missing, turn it on under Database, Extensions (and Integrations, Vault), then run the Phase 6 migration's `do $$ ... $$` block again, or schedule by hand with `cron.schedule`. The migration only prints a warning when they're missing.
+   - `vault.create_secret` fails if a secret with that name already exists. To change a value later, use `vault.update_secret`.
+   - Check it: `select jobname, schedule from cron.job;` lists `call-app-jobs` at `*/15 * * * *`, and `select status_code, created from net._http_response order by created desc limit 5;` shows 200s every 15 minutes.
 5. Reminders are off for everyone until each person turns them on in Settings. The morning email goes at their chosen time in their own timezone, waits out quiet hours, and is sent once per day, however often the job runs. Settings has a preview of today's email.
 
 ### Vercel (first deploy)
@@ -166,11 +172,11 @@ Each run is charged its worst possible cost before Claude is called, then correc
 
 ### Sentry (Phase 8)
 
-Create a Next.js project in Sentry and set the `SENTRY_*` variables. Meeting notes, task text and other personal data stay out of error reports.
+Error reporting is off until you set it up. Create a Next.js project in Sentry, then set `SENTRY_DSN` and `NEXT_PUBLIC_SENTRY_DSN` (the same value) in Vercel and redeploy. Only scrubbed errors are sent: no meeting notes, task text, names, emails, cookies or request data, no performance tracing and no breadcrumbs, and anything in an error message that isn't a plain code is replaced with `[redacted]`. Source maps aren't uploaded, so stack traces point at built files.
 
 ## Turn on CI
 
-The CI workflow isn't active yet. To turn it on, grant `gh` the `workflow` scope, then move `docs/ci-workflow.yml` to `.github/workflows/ci.yml` and push.
+The CI workflow isn't active yet. It runs the security audit, lint, types, unit and database tests, a build and the browser tests on every push and pull request, with no secrets. To turn it on, grant `gh` the `workflow` scope, then move `docs/ci-workflow.yml` to `.github/workflows/ci.yml` and push.
 
 ```bash
 gh auth refresh -h github.com -s workflow

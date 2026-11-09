@@ -4,6 +4,9 @@ import { signInFresh } from "./session";
 
 const WCAG = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
 
+// A weekday that is never today: "by Friday" said on a Friday is ambiguous, so the app asks instead of guessing.
+const twoDaysAhead = new Date(Date.now() + 2 * 86_400_000).toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+
 async function meetingWithNotes(page: Page, notes: string) {
   await page.goto("/meetings/new");
   await page.getByLabel("Meeting title").fill("Product sync");
@@ -93,7 +96,7 @@ test("dismiss and restore a suggestion", async ({ page, context, baseURL }) => {
 
 test("confirm all complete shows a summary first and confirms only complete ones", async ({ page, context, baseURL }) => {
   await signInFresh(context, baseURL);
-  await meetingWithNotes(page, "Sam: Maya, can you send the brief by Friday?\nSam: Priya will update the pricing page.");
+  await meetingWithNotes(page, `Sam: Maya, can you send the brief by ${twoDaysAhead}?\nSam: Priya will update the pricing page.`);
   await suggest(page);
 
   await page.getByRole("button", { name: "Confirm all complete (1)" }).click();

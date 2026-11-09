@@ -214,8 +214,6 @@ describe("privileges in the database catalog", () => {
       "delete_my_account",
       "is_member",
       "is_workspace_owner",
-      "reserve_ai_usage",
-      "settle_ai_usage",
     ]);
   });
 

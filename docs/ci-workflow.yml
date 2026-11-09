@@ -11,6 +11,7 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
@@ -25,3 +26,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      # The browser tests run against stand-ins for Supabase, Google, Claude and Resend that
+      # the tests start themselves, so this job needs no secrets and none are given to it.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

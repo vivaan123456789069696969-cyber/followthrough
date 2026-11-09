@@ -232,14 +232,14 @@ describe("confirm_suggestion", () => {
 });
 
 describe("ai usage", () => {
-  const reserve = (who: Person, estimate = 0.2, cap = 5, hourly = 10, globalCap: number | null = null) =>
-    db.asUser<{ r: { id: string; token: string } }>(
-      who.userId,
-      "select public.reserve_ai_usage($1, 'claude-test', $2, $3, $4, $5) as r",
-      [who.noteId, estimate, cap, hourly, globalCap],
+  // Only the app's server can record usage, and it says whose it is.
+  const reserve = (who: Person, estimate = 0.2, cap = 5, hourly = 10, globalCap: number | null = null, noteId = who.noteId) =>
+    db.asServer<{ r: { id: string; token: string } }>(
+      "select public.reserve_ai_usage($1, $2, 'claude-test', $3, $4, $5, $6) as r",
+      [who.userId, noteId, estimate, cap, hourly, globalCap],
     );
   const settle = (who: Person, id: string, token: string, cost = 0.01) =>
-    db.asUser(who.userId, "select public.settle_ai_usage($1, $2, 'claude-test', 100, 50, $3)", [id, token, cost]);
+    db.asServer("select public.settle_ai_usage($1, $2, $3, 'claude-test', 100, 50, $4)", [who.userId, id, token, cost]);
 
   it("can't be written directly", async () => {
     await expect(
@@ -292,11 +292,18 @@ describe("ai usage", () => {
     await expect(reserve(who, 0.01, 5, 10, 0)).rejects.toThrow(/ai_global_cap/);
   });
 
-  it("only reserves against notes the user can see, and refuses negative costs", async () => {
-    await expect(
-      db.asUser(other.userId, "select public.reserve_ai_usage($1, 'claude-test', 0.1, 5, 10, null)", [maya.noteId]),
-    ).rejects.toThrow(/not found/);
+  it("only reserves for people who belong to the note's workspace, and refuses negative costs", async () => {
+    await expect(reserve(other, 0.1, 5, 10, null, maya.noteId)).rejects.toThrow(/not found/);
     await expect(reserve(maya, -1)).rejects.toThrow(/bad usage values/);
+  });
+
+  it("can't be called by signed-in people, who could otherwise write usage with caps they choose", async () => {
+    const own = "select public.reserve_ai_usage($1, $2, 'claude-test', 0.1, 1000, 1000, null)";
+    await expect(db.asUser(maya.userId, own, [maya.userId, maya.noteId])).rejects.toThrow(/permission denied/);
+    await expect(db.asAnon(own, [maya.userId, maya.noteId])).rejects.toThrow(/permission denied/);
+    await expect(
+      db.asUser(maya.userId, "select public.settle_ai_usage($1, $2, $3, 'x', 1, 1, 0)", [maya.userId, maya.noteId, maya.noteId]),
+    ).rejects.toThrow(/permission denied/);
   });
 });
 

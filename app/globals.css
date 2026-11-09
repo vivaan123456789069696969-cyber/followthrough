@@ -80,6 +80,11 @@ body {
   outline-offset: 2px;
 }
 
+/* Keeps a focused control, and anything scrolled to, clear of the phone's fixed bottom bar. */
+html {
+  scroll-padding-bottom: 6rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

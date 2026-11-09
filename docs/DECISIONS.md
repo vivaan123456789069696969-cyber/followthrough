@@ -55,7 +55,7 @@
 - Before Phase 1: enable_confirmations stays on so an unconfirmed address can't sign in; check every public table has RLS in the test suite.
 
 ### Before Phase 1 (2026-11-05)
-- Vercel plan: Pro, so the 15-minute reminder schedule stays. (Corrected 2026-11-08: Vercel reports the account as Hobby. See Phase 5.)
+- Vercel plan: first said to be Pro; corrected 2026-11-08, Vercel reports the account as Hobby (daily jobs only). Reminders run every 15 minutes from Supabase instead; see Phase 5 and Phase 6.
 - Magic-link sender: the user sets it directly in Supabase's SMTP settings, on the verified domain. Not recorded in this public repo.
 - Phase 0 approved with the CI check left open.
 - RLS tests run on PGlite (real Postgres in-process) as part of npm test, needing no Docker or keys. `npm run test:live` repeats the key checks on the real test project.
@@ -145,11 +145,23 @@
 - Test switches (simulated clock, stand-in servers) are ignored on Vercel production.
 - The pg_net job only sends its secret over https. The migration's revoke on the `net` schema has no effect: Supabase's own admin role granted pg_net to every role, and only it can take that back. This is safe because the `net` schema isn't exposed through the Data API (checked 2026-11-09: only the 2 standard schemas are), so users can't call pg_net or read its queue. Never add `net` to the exposed schemas.
 
-### Phase 7, Wispr Flow import (2026-11-09)
+### Phase 7, Wispr Flow import (2026-11-09, approved by the user the same day; sample-export check still open)
 - The user has no Wispr Flow export samples or API docs, so the import is generic: when adding notes, choose "Wispr Flow", then paste or upload .txt, .md, .vtt, .srt or .docx. Notes are saved with source `wispr_import` and labelled "Wispr Flow import". A Wispr-specific format can be added from real samples later.
 - Only a byte-order mark and stray control characters (not tabs or line breaks) are removed; the words are kept exactly, so quotes still match. Size, type, UTF-8 and emptiness are checked on the server like any upload.
 - Sources come from one list (lib/notes/source-list.ts). The direct connection is listed as needing validation, can't be chosen, and shows as "Coming after validation" with no button. Nothing claims a connection.
 
+### Phase 8, choices made by the user (2026-11-09)
+- Sentry: built with personal data scrubbed (no note or task text, no emails, no request bodies), and off until SENTRY_DSN is set in Vercel. Nothing is sent without it.
+- CI: turned on. The user runs `gh auth refresh -h github.com -s workflow` once to give their GitHub login the permission; then docs/ci-workflow.yml moves to .github/workflows/ci.yml.
+- CAPTCHA on sign-in: skipped for now and accepted as a risk. Supabase limits sign-in emails per address and per hour. Revisit if abuse shows up; it needs a Cloudflare Turnstile site the user creates.
+
+### Phase 8, hardening (2026-11-09)
+- Added: a skip-to-content link and room above the phone's bottom bar (WCAG 2.4.1 and 2.4.11); a catch-all error page; a loading skeleton; demo data (`npm run seed`, dev project only); Sentry (off until a DSN is set; reports are rebuilt from a few safe fields, messages with spaces are redacted, no performance data); Permissions-Policy and Cross-Origin-Opener-Policy headers.
+- Tests added: an accessibility sweep of every screen in light and dark, at phone and desktop size, plus 320px reflow, keyboard, reduced motion and a check that the scanner catches planted problems; a performance check (slowed phone: main content in about 1 second, under 300 KB of script); the whole-app product test; security headers on public and private pages. Tests that name a weekday use a day that is never today, since "by Friday" said on a Friday is ambiguous and the app asks instead of guessing.
+- From the final security review: AI usage can now only be recorded by the server (`reserve_ai_usage` and `settle_ai_usage` are service-role only and take the person's id from their verified sign-in), so people can't write usage with caps they choose or poison the optional shared cap. Suggesting actions therefore needs `SUPABASE_SECRET_KEY` as well as the Claude key. GCM tag length is pinned.
+- From the final QA review: re-running the demo script no longer leaves duplicate tasks; it uses the person's timezone.
+- Accepted: no per-day caps on meetings, tasks or contacts a signed-in person can create (only their own data is affected); `/api/unsubscribe` has no rate limit (it only reads, and a forged link changes nothing; a Vercel firewall rule would cover it); the Google list and calendar can be created repeatedly by their owner in their own Google account; the test switches (`REMINDERS_TEST_CLOCK`, `GOOGLE_TEST_ENDPOINTS`, `RESEND_TEST_ENDPOINTS`) work anywhere but Vercel production, so they must never be set in Vercel Preview or Production; Sentry's "Prevent Storing of IP Addresses" should be turned on in the Sentry project if it's used.
+- Not built, known from the start: deleting tasks, due dates shown next to meetings, a real Google round trip, Wispr export samples, CAPTCHA.
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.

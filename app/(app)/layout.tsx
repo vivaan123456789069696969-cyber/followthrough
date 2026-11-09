@@ -16,10 +16,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col md:flex-row">
+      {/* First stop for keyboard users: jumps past the menu, which repeats on every page. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-brand focus:px-4 focus:py-3 focus:text-on-brand"
+      >
+        Skip to main content
+      </a>
       {profile && !profile.timezone ? <TimezoneSync save={saveDetectedTimezone} /> : null}
       <AppNav />
       <div className="w-full min-w-0 flex-1 px-4 pt-6 pb-24 sm:px-8 md:pb-10">
-        <div className="mx-auto w-full max-w-3xl">{children}</div>
+        <div id="main-content" tabIndex={-1} className="mx-auto w-full max-w-3xl focus:outline-none">
+          {children}
+        </div>
       </div>
     </div>
   );
