@@ -155,13 +155,17 @@
 - CI: turned on. The user runs `gh auth refresh -h github.com -s workflow` once to give their GitHub login the permission; then docs/ci-workflow.yml moves to .github/workflows/ci.yml.
 - CAPTCHA on sign-in: skipped for now and accepted as a risk. Supabase limits sign-in emails per address and per hour. Revisit if abuse shows up; it needs a Cloudflare Turnstile site the user creates.
 
-### Phase 8, hardening (2026-11-09)
+### Phase 8, hardening (2026-11-09, approved by the user the same day; this closes the build plan, with the open items listed below and in the checklist)
 - Added: a skip-to-content link and room above the phone's bottom bar (WCAG 2.4.1 and 2.4.11); a catch-all error page; a loading skeleton; demo data (`npm run seed`, dev project only); Sentry (off until a DSN is set; reports are rebuilt from a few safe fields, messages with spaces are redacted, no performance data); Permissions-Policy and Cross-Origin-Opener-Policy headers.
 - Tests added: an accessibility sweep of every screen in light and dark, at phone and desktop size, plus 320px reflow, keyboard, reduced motion and a check that the scanner catches planted problems; a performance check (slowed phone: main content in about 1 second, under 300 KB of script); the whole-app product test; security headers on public and private pages. Tests that name a weekday use a day that is never today, since "by Friday" said on a Friday is ambiguous and the app asks instead of guessing.
 - From the final security review: AI usage can now only be recorded by the server (`reserve_ai_usage` and `settle_ai_usage` are service-role only and take the person's id from their verified sign-in), so people can't write usage with caps they choose or poison the optional shared cap. Suggesting actions therefore needs `SUPABASE_SECRET_KEY` as well as the Claude key. GCM tag length is pinned.
 - From the final QA review: re-running the demo script no longer leaves duplicate tasks; it uses the person's timezone.
 - Accepted: no per-day caps on meetings, tasks or contacts a signed-in person can create (only their own data is affected); `/api/unsubscribe` has no rate limit (it only reads, and a forged link changes nothing; a Vercel firewall rule would cover it); the Google list and calendar can be created repeatedly by their owner in their own Google account; the test switches (`REMINDERS_TEST_CLOCK`, `GOOGLE_TEST_ENDPOINTS`, `RESEND_TEST_ENDPOINTS`) work anywhere but Vercel production, so they must never be set in Vercel Preview or Production; Sentry's "Prevent Storing of IP Addresses" should be turned on in the Sentry project if it's used.
 - Not built, known from the start: deleting tasks, due dates shown next to meetings, a real Google round trip, Wispr export samples, CAPTCHA.
+### CI left off for now (2026-11-09)
+- The user chose to skip CI after the GitHub permission approval didn't complete. Nothing runs automatically on GitHub; every check runs on the developer's computer before each push (lint, types, unit and database tests, browser tests, build, `npm audit`).
+- The workflow is ready in docs/ci-workflow.yml and now also runs the browser tests, with no secrets. To turn it on later: `gh auth refresh -h github.com -s workflow`, approve it on https://github.com/login/device (enter the code, then click Authorize, signed in as the repository owner), move the file to .github/workflows/ci.yml and push.
+
 ### CI not active yet (2026-11-05)
 - The gh sign-in lacked the `workflow` scope, so the user chose to push without the workflow file. The file is kept at docs/ci-workflow.yml and nothing runs tests on GitHub until it moves to .github/workflows/ci.yml.
 - Phase 0's CI requirement stays open. Checks ran locally before pushing.
