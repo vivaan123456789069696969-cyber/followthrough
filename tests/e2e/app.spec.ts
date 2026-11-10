@@ -327,3 +327,32 @@ test("a missing meeting shows not found", async ({ page, context, baseURL }) => 
   await page.getByRole("link", { name: "Go to My day" }).click();
   await expect(page).toHaveURL(/\/my-day$/);
 });
+
+test("the meetings list shows open actions and when the next one is due", async ({ page, context, baseURL }) => {
+  const token = await signInFresh(context, baseURL);
+  const [meeting] = await seed(token, "meetings", [{ title: "Budget review", starts_at: new Date().toISOString() }]);
+  const [quiet] = await seed(token, "meetings", [{ title: "Quiet chat", starts_at: new Date().toISOString() }]);
+  await seed(token, "tasks", [
+    { title: "Send figures", owner_user_id: USER_ID, meeting_id: meeting!.id, due_date: dayFromToday(1) },
+    { title: "Book room", owner_user_id: USER_ID, meeting_id: meeting!.id },
+    { title: "Done already", owner_user_id: USER_ID, meeting_id: meeting!.id, status: "done", due_date: dayFromToday(-4) },
+    { title: "Old", owner_user_id: USER_ID, meeting_id: quiet!.id, due_date: dayFromToday(-2), status: "done" },
+  ]);
+  await page.goto("/meetings");
+  await expect(page.getByRole("link", { name: /Budget review/ })).toContainText("2 open actions · next due Tomorrow");
+  await expect(page.getByRole("link", { name: /Quiet chat/ })).not.toContainText("open action");
+  await expectNoViolations(page);
+});
+
+test("a task can be deleted, after a confirm step", async ({ page, context, baseURL }) => {
+  const token = await signInFresh(context, baseURL);
+  await seed(token, "tasks", [{ title: "Throw away", owner_user_id: USER_ID }, { title: "Keep me", owner_user_id: USER_ID }]);
+  await page.goto("/my-tasks");
+  await page.getByRole("link", { name: /Throw away/ }).click();
+  const drawer = page.getByRole("dialog", { name: "Task details" });
+  await expectNoViolations(page);
+  await drawer.getByText("Delete task", { exact: true }).click();
+  await drawer.getByRole("button", { name: "Delete this task" }).click();
+  await expect(page.getByRole("link", { name: /Throw away/ })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: /Keep me/ })).toBeVisible();
+});

@@ -4,6 +4,7 @@ import type { AppContext } from "@/lib/data/context";
 import { getTask, listContacts } from "@/lib/data/tasks";
 import { addDays, dueLabel, longDate, meetingTime } from "@/lib/tasks/dates";
 import { secondaryButton } from "./button-styles";
+import { DeleteTaskForm } from "./delete-task-form";
 import { Drawer } from "./drawer";
 import { RetrySync } from "./google-forms";
 import { SnoozeForm } from "./snooze-form";
@@ -136,6 +137,8 @@ export async function TaskDetail({ context, id, closeHref }: { context: AppConte
             {task.syncs.some((sync) => sync.state === "failed") ? <RetrySync taskId={task.id} /> : null}
           </section>
         ) : null}
+
+        <DeleteTaskForm id={task.id} returnTo={closeHref} hasGoogle={task.syncs.some((sync) => sync.state === "ok")} />
 
         <section aria-labelledby="activity-heading">
           <h3 id="activity-heading" className="mb-2 font-semibold">

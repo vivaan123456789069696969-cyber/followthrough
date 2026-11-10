@@ -432,6 +432,11 @@ async function google(request, response, url) {
       return send(response, 200, task);
     }
     if (!list.tasks.has(id)) return send(response, 404, { error: { errors: [{ reason: "notFound" }] } });
+    if (request.method === "DELETE") {
+      list.tasks.delete(id);
+      response.writeHead(204);
+      return response.end();
+    }
     return send(response, 200, Object.assign(list.tasks.get(id), body));
   }
 
@@ -655,7 +660,19 @@ createServer(async (request, response) => {
     }
     if (request.method === "DELETE") {
       const keep = rows.filter((row) => !matches(row, url.searchParams));
+      const removed = rows.filter((row) => matches(row, url.searchParams));
       store.tables[table] = keep;
+      if (table === "tasks") {
+        // Like the database: a task's sync records and log go with it.
+        const gone = new Set(removed.map((row) => row.id));
+        for (const child of ["task_syncs", "task_events"]) {
+          if (store.tables[child]) store.tables[child] = store.tables[child].filter((row) => !gone.has(row.task_id));
+        }
+      }
+      if ((request.headers.prefer ?? "").includes("return=representation")) {
+        if ((request.headers.accept ?? "").includes("vnd.pgrst.object")) return reply(request, response, 200, removed);
+        return send(response, 200, removed);
+      }
       if (table === "meetings") {
         const ids = new Set(keep.map((row) => row.id));
         store.tables.meeting_notes = store.tables.meeting_notes.filter((note) => ids.has(note.meeting_id));

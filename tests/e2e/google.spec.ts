@@ -267,3 +267,41 @@ test("deleting the account removes Google's access first", async ({ page, contex
   await expect(page).toHaveURL(/account=deleted/);
   expect((await googleAccount(context)).revoked).toBe(true);
 });
+
+test("deleting a task removes its copies in Google", async ({ page, context, baseURL }) => {
+  await start(context, baseURL);
+  await turnOn(page, "Due dates in Calendar");
+  await addTask(page, "Cancel the booth", "2030-07-01");
+  await expect.poll(async () => (await googleAccount(context)).calendars[0]?.events ?? []).toHaveLength(1);
+
+  await page.getByRole("link", { name: /Cancel the booth/ }).click();
+  const drawer = page.getByRole("dialog", { name: "Task details" });
+  await expect(drawer.getByText("Synced", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await drawer.getByText("Delete task", { exact: true }).click();
+  await drawer.getByRole("button", { name: "Delete this task" }).click();
+
+  await expect(page.getByRole("link", { name: /Cancel the booth/ })).toHaveCount(0);
+  expect((await googleAccount(context)).calendars[0]!.events).toEqual([]);
+});
+
+test("if Google can't be reached, the task stays and says why", async ({ page, context, baseURL }) => {
+  const account = await start(context, baseURL);
+  await turnOn(page, "Due dates in Calendar");
+  await addTask(page, "Keep until Google answers", "2030-07-02");
+  await expect.poll(async () => (await googleAccount(context)).calendars[0]?.events ?? []).toHaveLength(1);
+
+  await page.getByRole("link", { name: /Keep until Google answers/ }).click();
+  const drawer = page.getByRole("dialog", { name: "Task details" });
+  await expect(drawer.getByText("Synced", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await control(account, { failWrites: 10 });
+  await drawer.getByText("Delete task", { exact: true }).click();
+  await drawer.getByRole("button", { name: "Delete this task" }).click();
+  await expect(drawer.getByRole("alert")).toHaveText("We couldn't remove this from Google. Try again in a moment.");
+  expect((await googleAccount(context)).calendars[0]!.events).toHaveLength(1);
+
+  // Google answers again: now it goes.
+  await control(account, { failWrites: 0 });
+  await drawer.getByRole("button", { name: "Delete this task" }).click();
+  await expect(page.getByRole("link", { name: /Keep until Google answers/ })).toHaveCount(0);
+  expect((await googleAccount(context)).calendars[0]!.events).toEqual([]);
+});

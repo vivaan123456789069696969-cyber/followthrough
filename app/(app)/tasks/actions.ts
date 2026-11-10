@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { safeNextPath } from "@/lib/auth/routes";
 import { getAppContext, type AppContext } from "@/lib/data/context";
+import { googleConfig } from "@/lib/google/config";
+import { removeFromGoogle } from "@/lib/google/remove";
 import { syncAfterResponse } from "@/lib/google/schedule";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { isCalendarDate } from "@/lib/tasks/dates";
 import type { TaskEventType } from "@/lib/supabase/types";
 
@@ -147,6 +150,35 @@ export async function setTaskDone(formData: FormData) {
   }
   await recordEvent(context, id, done ? "done" : "reopened");
   syncAfterResponse([id]);
+
+  revalidatePath("/", "layout");
+  redirect(safeNextPath(String(formData.get("return_to") ?? "")));
+}
+
+/**
+ * Deletes a task for good. Its copies in Google go first; if Google can't be reached the task
+ * stays, so a copy is never left behind with nothing to find it by.
+ */
+export async function deleteTask(_previous: FormState, formData: FormData): Promise<FormState> {
+  const id = z.uuid().safeParse(formData.get("id"));
+  if (!id.success) return { error: "We couldn't find this task." };
+
+  const { supabase } = await getAppContext();
+  const { data: own } = await supabase.from("tasks").select("id").eq("id", id.data).maybeSingle();
+  if (!own) return { error: "We couldn't find this task." };
+
+  if (googleConfig()) {
+    const admin = createAdminClient();
+    if (admin && !(await removeFromGoogle(admin, id.data))) {
+      return { error: "We couldn't remove this from Google. Try again in a moment." };
+    }
+  }
+
+  const { data, error } = await supabase.from("tasks").delete().eq("id", id.data).select("id").maybeSingle();
+  if (error || !data) {
+    logFailure("task_delete_failed", error?.code);
+    return { error: "We couldn't delete this task. Try again." };
+  }
 
   revalidatePath("/", "layout");
   redirect(safeNextPath(String(formData.get("return_to") ?? "")));

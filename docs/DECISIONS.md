@@ -173,3 +173,7 @@
 ### Tooling notes (2026-11-05)
 - TypeScript stays on 5.x: typescript-eslint supports below 6.1. ESLint stays on 9.x: eslint-plugin-react, import and jsx-a11y do not support 10. Revisit when they do.
 - Commit author is set in this repo only: the GitHub login with its noreply address.
+
+## Task deletion and meeting deadlines (after Phase 8)
+- Tasks can be deleted from the task details ("Delete task", behind a confirm step). Google copies (Tasks item, deadline event) are removed first; if Google can't be reached the task stays and says so, because the sync records that locate the copies go with the task. If Google is disconnected the task is deleted and nothing can be removed.
+- The Meetings list shows each meeting's open actions and the next due date ("2 open actions · next due Tomorrow"). This closes master prompt 3.8. Still not built: reading changes back from Google, a real Google round trip, Wispr export samples, CAPTCHA.
